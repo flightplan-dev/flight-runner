@@ -222,8 +222,9 @@ export async function runAgent(env: Env): Promise<void> {
       }
     });
 
-    // Run the prompt
-    await session.prompt(env.PROMPT);
+    // Run the prompt with sender attribution
+    const promptWithSender = `[${env.PROMPT_SENDER_NAME}]: ${env.PROMPT}`;
+    await session.prompt(promptWithSender);
 
     // Wait for agent to finish
     await session.agent.waitForIdle();
