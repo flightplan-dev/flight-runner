@@ -32,14 +32,14 @@ type ReportableEvent =
 
 export class EventReporter {
   private gatewayUrl: string;
-  private gatewaySecret: string;
+  private gatewayApiKey: string;
   private missionId: string;
   private eventQueue: AgentEvent[] = [];
   private isFlushing = false;
 
   constructor(env: Env) {
     this.gatewayUrl = env.GATEWAY_URL;
-    this.gatewaySecret = env.GATEWAY_SECRET;
+    this.gatewayApiKey = env.GATEWAY_API_KEY;
     this.missionId = env.MISSION_ID;
   }
 
@@ -88,7 +88,7 @@ export class EventReporter {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${this.gatewaySecret}`,
+          Authorization: `Bearer ${this.gatewayApiKey}`,
         },
         body: JSON.stringify(event),
       });

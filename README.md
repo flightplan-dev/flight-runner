@@ -15,11 +15,11 @@ Agent runner for [Flightplan](https://flightplan.dev) missions. Runs inside sand
 | Variable | Description |
 |----------|-------------|
 | `GATEWAY_URL` | URL of the Flightplan gateway (e.g., `https://flightplan.app`) |
-| `GATEWAY_SECRET` | Secret for authenticating with the gateway |
+| `GATEWAY_API_KEY` | Organization API key for webhook authentication |
 | `MISSION_ID` | UUID of the mission being executed |
 | `PROMPT` | The prompt/task to execute |
-| `MODEL` | The LLM model to use (e.g., `claude-sonnet-4`, `gpt-4o`) |
-| `LLM_API_KEY` | API key for the LLM provider |
+| `MODEL` | The LLM model to use (e.g., `claude-sonnet-4.5`, `gpt-4o`) |
+| `LLM_API_KEY` | API key for the LLM provider (Anthropic, OpenAI) |
 | `WORKSPACE` | Path to the workspace directory (cloned repo) |
 
 ## Models
