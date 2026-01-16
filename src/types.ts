@@ -32,7 +32,7 @@ export type AgentEventType =
   | "message:delta"
   | "message:end"
   | "tool:start"
-  | "tool:delta"
+  | "tool:update"
   | "tool:end";
 
 export interface BaseEvent {
@@ -79,20 +79,20 @@ export interface MessageEndEvent extends BaseEvent {
 
 export interface ToolStartEvent extends BaseEvent {
   type: "tool:start";
-  toolUseId: string;
+  toolCallId: string;
   toolName: string;
   input: Record<string, unknown>;
 }
 
-export interface ToolDeltaEvent extends BaseEvent {
-  type: "tool:delta";
-  toolUseId: string;
+export interface ToolUpdateEvent extends BaseEvent {
+  type: "tool:update";
+  toolCallId: string;
   delta: string;
 }
 
 export interface ToolEndEvent extends BaseEvent {
   type: "tool:end";
-  toolUseId: string;
+  toolCallId: string;
   output: string;
   isError?: boolean;
 }
@@ -105,42 +105,5 @@ export type AgentEvent =
   | MessageDeltaEvent
   | MessageEndEvent
   | ToolStartEvent
-  | ToolDeltaEvent
+  | ToolUpdateEvent
   | ToolEndEvent;
-
-// =============================================================================
-// Tool Definitions
-// =============================================================================
-
-export interface ToolDefinition {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-}
-
-// =============================================================================
-// Anthropic API Types
-// =============================================================================
-
-export interface AnthropicMessage {
-  role: "user" | "assistant";
-  content: string | AnthropicContentBlock[];
-}
-
-export interface AnthropicContentBlock {
-  type: "text" | "tool_use" | "tool_result";
-  text?: string;
-  id?: string;
-  name?: string;
-  input?: Record<string, unknown>;
-  tool_use_id?: string;
-  content?: string;
-  is_error?: boolean;
-}
-
-export interface AnthropicToolResult {
-  type: "tool_result";
-  tool_use_id: string;
-  content: string;
-  is_error?: boolean;
-}

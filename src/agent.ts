@@ -1,238 +1,212 @@
 /**
  * Agent
  *
- * Main agent loop that processes prompts using Claude API with tools.
+ * Wraps pi-mono's createAgentSession to run coding tasks and stream events back to Gateway.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
-import type { MessageParam, ContentBlockParam, ToolResultBlockParam } from "@anthropic-ai/sdk/resources/messages";
+import {
+  createAgentSession,
+  discoverAuthStorage,
+  discoverModels,
+  SessionManager,
+  SettingsManager,
+  createCodingTools,
+} from "@mariozechner/pi-coding-agent";
 import type { Env } from "./types.js";
 import { EventReporter } from "./reporter.js";
-import { ToolExecutor, TOOL_DEFINITIONS } from "./tools.js";
 
 // =============================================================================
-// Constants
+// Model Mapping
 // =============================================================================
 
-const SYSTEM_PROMPT = `You are an expert software engineer helping with coding tasks.
+// Map friendly model names to pi-mono provider/model pairs
+const MODEL_MAP: Record<string, { provider: string; modelId: string }> = {
+  // Claude 4.5 models (latest)
+  "claude-sonnet-4.5": { provider: "anthropic", modelId: "claude-sonnet-4-5" },
+  "claude-opus-4.5": { provider: "anthropic", modelId: "claude-opus-4-5" },
+  // Claude 4 models
+  "claude-sonnet-4": { provider: "anthropic", modelId: "claude-sonnet-4" },
+  "claude-opus-4": { provider: "anthropic", modelId: "claude-opus-4-0" },
+  // OpenAI models
+  "gpt-4o": { provider: "openai", modelId: "gpt-4o" },
+  "gpt-4.1": { provider: "openai", modelId: "gpt-4.1" },
+};
 
-You have access to tools for reading, writing, and editing files, as well as running bash commands.
-
-Guidelines:
-- Read files before editing to understand context
-- Use the edit tool for precise changes (oldText must match exactly)
-- Use bash for running tests, git operations, installing packages, etc.
-- Be concise in your responses
-- If you encounter an error, try to fix it rather than giving up
-
-When you're done with your task, explain what you did and any important details.`;
-
-const MAX_TURNS = 50; // Safety limit
-
-// =============================================================================
-// Agent
-// =============================================================================
-
-export class Agent {
-  private client: Anthropic;
-  private env: Env;
-  private reporter: EventReporter;
-  private toolExecutor: ToolExecutor;
-  private messages: MessageParam[] = [];
-  private totalInputTokens = 0;
-  private totalOutputTokens = 0;
-
-  constructor(env: Env) {
-    this.env = env;
-    this.client = new Anthropic({ apiKey: env.LLM_API_KEY });
-    this.reporter = new EventReporter(env);
-    this.toolExecutor = new ToolExecutor(env.WORKSPACE);
+function resolveModel(modelName: string): { provider: string; modelId: string } {
+  // Check if it's a friendly name
+  if (MODEL_MAP[modelName]) {
+    return MODEL_MAP[modelName];
   }
 
-  /**
-   * Run the agent with the given prompt
-   */
-  async run(prompt: string): Promise<void> {
-    console.log(`[Agent] Starting with model: ${this.env.MODEL}`);
-    console.log(`[Agent] Workspace: ${this.env.WORKSPACE}`);
-    console.log(`[Agent] Prompt: ${prompt.slice(0, 100)}...`);
+  // Assume it's already in provider/model format or just a model ID
+  if (modelName.includes("/")) {
+    const [provider, modelId] = modelName.split("/", 2);
+    return { provider, modelId };
+  }
 
-    await this.reporter.report({
-      type: "agent:start",
-      model: this.env.MODEL,
+  // Default to Anthropic
+  return { provider: "anthropic", modelId: modelName };
+}
+
+// =============================================================================
+// Agent Runner
+// =============================================================================
+
+export async function runAgent(env: Env): Promise<void> {
+  const reporter = new EventReporter(env);
+  const { provider, modelId } = resolveModel(env.MODEL);
+
+  console.log(`[Agent] Starting with model: ${provider}/${modelId}`);
+  console.log(`[Agent] Workspace: ${env.WORKSPACE}`);
+  console.log(`[Agent] Prompt: ${env.PROMPT.slice(0, 100)}...`);
+
+  // Report start
+  await reporter.report({
+    type: "agent:start",
+    model: `${provider}/${modelId}`,
+  });
+
+  try {
+    // Set up auth storage with the provided API key
+    const authStorage = discoverAuthStorage();
+    authStorage.setRuntimeApiKey(provider, env.LLM_API_KEY);
+
+    // Set up model registry and find the model
+    const modelRegistry = discoverModels(authStorage);
+    const model = modelRegistry.find(provider, modelId);
+    if (!model) {
+      throw new Error(`Model not found: ${provider}/${modelId}`);
+    }
+
+    // Create agent session
+    const { session } = await createAgentSession({
+      cwd: env.WORKSPACE,
+      model,
+      thinkingLevel: "off",
+      authStorage,
+      modelRegistry,
+      sessionManager: SessionManager.inMemory(),
+      settingsManager: SettingsManager.inMemory({
+        compaction: { enabled: false },
+        retry: { enabled: true, maxRetries: 3 },
+      }),
+      tools: createCodingTools(env.WORKSPACE),
+      // Disable discovery (no extensions, skills, context files in sandbox)
+      skills: [],
+      contextFiles: [],
+      promptTemplates: [],
     });
 
-    try {
-      // Add user message
-      this.messages.push({
-        role: "user",
-        content: prompt,
-      });
+    // Track message content for message:end event
+    let currentMessageId: string | undefined;
+    let currentMessageContent = "";
 
-      // Agent loop
-      let turns = 0;
-      while (turns < MAX_TURNS) {
-        turns++;
-        console.log(`[Agent] Turn ${turns}`);
-
-        const shouldContinue = await this.runTurn();
-        if (!shouldContinue) {
+    // Subscribe to events and forward to Gateway
+    session.subscribe(async (event) => {
+      switch (event.type) {
+        case "agent_start":
+          // Already reported above
           break;
-        }
+
+        case "agent_end":
+          // Handled after prompt() returns
+          break;
+
+        case "message_start":
+          currentMessageId = `msg_${Date.now()}`;
+          currentMessageContent = "";
+          await reporter.report({
+            type: "message:start",
+            messageId: currentMessageId,
+            role: "assistant",
+          });
+          break;
+
+        case "message_update":
+          if (event.assistantMessageEvent.type === "text_delta" && currentMessageId) {
+            const delta = event.assistantMessageEvent.delta;
+            currentMessageContent += delta;
+            await reporter.report({
+              type: "message:delta",
+              messageId: currentMessageId,
+              delta,
+            });
+          }
+          break;
+
+        case "message_end":
+          if (currentMessageId) {
+            await reporter.report({
+              type: "message:end",
+              messageId: currentMessageId,
+              content: currentMessageContent,
+            });
+            currentMessageId = undefined;
+            currentMessageContent = "";
+          }
+          break;
+
+        case "tool_execution_start":
+          await reporter.report({
+            type: "tool:start",
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            input: event.args as Record<string, unknown>,
+          });
+          break;
+
+        case "tool_execution_update":
+          // partialResult contains streaming output from tools
+          const partialOutput = event.partialResult?.content?.[0];
+          if (partialOutput && "text" in partialOutput) {
+            await reporter.report({
+              type: "tool:update",
+              toolCallId: event.toolCallId,
+              delta: partialOutput.text,
+            });
+          }
+          break;
+
+        case "tool_execution_end":
+          // result contains the final tool output
+          const resultContent = event.result?.content?.[0];
+          const output = resultContent && "text" in resultContent ? resultContent.text : JSON.stringify(event.result);
+          await reporter.report({
+            type: "tool:end",
+            toolCallId: event.toolCallId,
+            output,
+            isError: event.isError,
+          });
+          break;
       }
-
-      if (turns >= MAX_TURNS) {
-        console.warn(`[Agent] Reached max turns limit (${MAX_TURNS})`);
-      }
-
-      await this.reporter.report({
-        type: "agent:end",
-        usage: {
-          inputTokens: this.totalInputTokens,
-          outputTokens: this.totalOutputTokens,
-        },
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[Agent] Error:`, error);
-
-      await this.reporter.report({
-        type: "agent:error",
-        error: message,
-      });
-
-      throw error;
-    } finally {
-      await this.reporter.drain();
-    }
-  }
-
-  /**
-   * Run a single turn of the agent loop
-   * Returns true if the agent should continue (has tool calls)
-   */
-  private async runTurn(): Promise<boolean> {
-    const messageId = `msg_${Date.now()}`;
-
-    await this.reporter.report({
-      type: "message:start",
-      messageId,
-      role: "assistant",
     });
 
-    // Call Claude API with streaming
-    const stream = this.client.messages.stream({
-      model: this.env.MODEL,
-      max_tokens: 8192,
-      system: SYSTEM_PROMPT,
-      tools: TOOL_DEFINITIONS.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        input_schema: tool.inputSchema as Anthropic.Tool["input_schema"],
-      })),
-      messages: this.messages,
+    // Run the prompt
+    await session.prompt(env.PROMPT);
+
+    // Wait for agent to finish
+    await session.agent.waitForIdle();
+
+    // Report completion
+    await reporter.report({
+      type: "agent:end",
     });
 
-    // Collect the response
-    const contentBlocks: ContentBlockParam[] = [];
-    let currentText = "";
+    // Clean up
+    session.dispose();
 
-    stream.on("text", async (text) => {
-      currentText += text;
-      await this.reporter.report({
-        type: "message:delta",
-        messageId,
-        delta: text,
-      });
+    console.log("[Agent] Completed successfully");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[Agent] Error:", error);
+
+    await reporter.report({
+      type: "agent:error",
+      error: message,
     });
 
-    // Wait for the stream to complete
-    const response = await stream.finalMessage();
-
-    // Update token counts
-    this.totalInputTokens += response.usage.input_tokens;
-    this.totalOutputTokens += response.usage.output_tokens;
-
-    // Process content blocks
-    for (const block of response.content) {
-      if (block.type === "text") {
-        contentBlocks.push({ type: "text", text: block.text });
-      } else if (block.type === "tool_use") {
-        contentBlocks.push({
-          type: "tool_use",
-          id: block.id,
-          name: block.name,
-          input: block.input,
-        });
-      }
-    }
-
-    // Report message end
-    await this.reporter.report({
-      type: "message:end",
-      messageId,
-      content: currentText,
-    });
-
-    // Add assistant message to history
-    this.messages.push({
-      role: "assistant",
-      content: contentBlocks,
-    });
-
-    // Check if there are tool calls
-    const toolUses = contentBlocks.filter((b) => b.type === "tool_use");
-    if (toolUses.length === 0) {
-      // No tool calls, we're done
-      return false;
-    }
-
-    // Execute tools and collect results
-    const toolResults: ToolResultBlockParam[] = [];
-
-    for (const toolUse of toolUses) {
-      if (toolUse.type !== "tool_use") continue;
-
-      const toolName = toolUse.name;
-      const toolInput = toolUse.input as Record<string, unknown>;
-      const toolUseId = toolUse.id;
-
-      console.log(`[Agent] Executing tool: ${toolName}`);
-
-      await this.reporter.report({
-        type: "tool:start",
-        toolUseId,
-        toolName,
-        input: toolInput,
-      });
-
-      const { output, isError } = await this.toolExecutor.execute(
-        toolName,
-        toolInput,
-      );
-
-      await this.reporter.report({
-        type: "tool:end",
-        toolUseId,
-        output,
-        isError,
-      });
-
-      toolResults.push({
-        type: "tool_result",
-        tool_use_id: toolUseId,
-        content: output,
-        is_error: isError,
-      });
-    }
-
-    // Add tool results to history
-    this.messages.push({
-      role: "user",
-      content: toolResults,
-    });
-
-    // Continue the loop
-    return true;
+    throw error;
+  } finally {
+    await reporter.drain();
   }
 }

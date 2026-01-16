@@ -13,6 +13,7 @@ import type {
   MessageDeltaEvent,
   MessageEndEvent,
   ToolStartEvent,
+  ToolUpdateEvent,
   ToolEndEvent,
   Env,
 } from "./types.js";
@@ -26,6 +27,7 @@ type ReportableEvent =
   | Omit<MessageDeltaEvent, "timestamp" | "missionId">
   | Omit<MessageEndEvent, "timestamp" | "missionId">
   | Omit<ToolStartEvent, "timestamp" | "missionId">
+  | Omit<ToolUpdateEvent, "timestamp" | "missionId">
   | Omit<ToolEndEvent, "timestamp" | "missionId">;
 
 export class EventReporter {

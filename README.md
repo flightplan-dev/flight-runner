@@ -1,14 +1,14 @@
 # flight-runner
 
-Agent runner for [Flightplan](https://flightplan.dev) missions. Runs inside sandboxes (Sprites) and executes coding tasks using LLM APIs.
+Agent runner for [Flightplan](https://flightplan.dev) missions. Runs inside sandboxes (Sprites) and executes coding tasks using [pi-mono](https://github.com/badlogic/pi-mono) SDK.
 
 ## Overview
 
 `flight-runner` is a standalone Node.js application that:
 
 1. Receives a prompt and configuration via environment variables
-2. Runs an agentic loop using Claude API with coding tools
-3. Streams events back to the Flightplan Gateway via HTTP
+2. Creates a pi-mono agent session with coding tools
+3. Runs the prompt and streams events back to the Flightplan Gateway via HTTP
 
 ## Environment Variables
 
@@ -18,25 +18,39 @@ Agent runner for [Flightplan](https://flightplan.dev) missions. Runs inside sand
 | `GATEWAY_SECRET` | Secret for authenticating with the gateway |
 | `MISSION_ID` | UUID of the mission being executed |
 | `PROMPT` | The prompt/task to execute |
-| `MODEL` | The LLM model to use (e.g., `claude-sonnet-4-20250514`) |
-| `LLM_API_KEY` | API key for the LLM provider (Anthropic) |
+| `MODEL` | The LLM model to use (e.g., `claude-sonnet-4`, `gpt-4o`) |
+| `LLM_API_KEY` | API key for the LLM provider |
 | `WORKSPACE` | Path to the workspace directory (cloned repo) |
+
+## Models
+
+Friendly model names are mapped to provider/model pairs:
+
+| Friendly Name | Provider | Model ID |
+|---------------|----------|----------|
+| `claude-sonnet-4.5` | anthropic | claude-sonnet-4-5 |
+| `claude-opus-4.5` | anthropic | claude-opus-4-5 |
+| `claude-sonnet-4` | anthropic | claude-sonnet-4 |
+| `claude-opus-4` | anthropic | claude-opus-4-0 |
+| `gpt-4o` | openai | gpt-4o |
+| `gpt-4.1` | openai | gpt-4.1 |
+
+You can also use full `provider/model` format (e.g., `anthropic/claude-sonnet-4-5`).
 
 ## Tools
 
-The agent has access to these tools:
+The agent uses pi-mono's built-in coding tools:
 
 | Tool | Description |
 |------|-------------|
-| `read` | Read file contents with optional offset/limit |
-| `write` | Write content to a file |
-| `edit` | Replace exact text in a file |
+| `read` | Read file contents |
 | `bash` | Execute shell commands |
-| `glob` | Find files matching a pattern |
+| `edit` | Replace exact text in a file |
+| `write` | Write content to a file |
 
 ## Events
 
-The agent streams these events back to the Gateway:
+The agent streams these events back to the Gateway via `POST /api/missions/:id/events`:
 
 | Event | Description |
 |-------|-------------|
@@ -47,6 +61,7 @@ The agent streams these events back to the Gateway:
 | `message:delta` | Text chunk from assistant |
 | `message:end` | Assistant message completed |
 | `tool:start` | Tool execution started |
+| `tool:update` | Tool output streaming |
 | `tool:end` | Tool execution completed |
 
 ## Development
@@ -90,13 +105,14 @@ cd /opt/flight-runner && npm install && npm run build
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │  flight-runner                                           │   │
 │  │                                                          │   │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐  │   │
-│  │  │  Agent   │──│  Claude  │  │  Tools               │  │   │
-│  │  │  Loop    │  │  API     │  │  - read/write/edit   │  │   │
-│  │  │          │──│          │──│  - bash              │  │   │
-│  │  └──────────┘  └──────────┘  └──────────────────────┘  │   │
+│  │  ┌──────────────────────────────────────────────────┐   │   │
+│  │  │  pi-mono SDK                                      │   │   │
+│  │  │  - createAgentSession()                          │   │   │
+│  │  │  - SessionManager.inMemory()                     │   │   │
+│  │  │  - createCodingTools(workspace)                  │   │   │
+│  │  └──────────────────────────────────────────────────┘   │   │
 │  │       │                                                 │   │
-│  │       │ HTTP POST                                       │   │
+│  │       │ session.subscribe(event => ...)                │   │
 │  │       ▼                                                 │   │
 │  │  ┌──────────────────────────────────────────────────┐  │   │
 │  │  │  Event Reporter                                   │  │   │

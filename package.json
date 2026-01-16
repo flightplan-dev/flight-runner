@@ -16,8 +16,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.52.0",
-    "openai": "^4.104.0",
+    "@mariozechner/pi-coding-agent": "^0.43.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {
