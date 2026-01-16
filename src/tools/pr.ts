@@ -173,7 +173,30 @@ export function createPrTool(options: CreatePrToolOptions): ToolDefinition<typeo
 
         const pr = (await response.json()) as { number: number; html_url: string };
 
-        // 4. Report PR created to Gateway
+        // 4. Add assignees (mission creator via their GitHub username)
+        try {
+          await fetch(
+            `https://api.github.com/repos/${env.REPO_OWNER}/${env.REPO_NAME}/issues/${pr.number}/assignees`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+                Accept: "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                assignees: [env.GITHUB_USERNAME],
+              }),
+            }
+          );
+          console.log(`[create_pr] Added ${env.GITHUB_USERNAME} as assignee`);
+        } catch (assignError) {
+          // Don't fail PR creation if assignee fails
+          console.warn(`[create_pr] Failed to add assignee:`, assignError);
+        }
+
+        // 5. Report PR created to Gateway
         await reporter.report({
           type: "pr:created",
           prNumber: pr.number,
