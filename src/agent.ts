@@ -78,16 +78,20 @@ export async function runAgent(env: Env): Promise<void> {
       throw new Error(`Model not found: ${provider}/${modelId}`);
     }
 
-    // Create agent session
+    // Session directory for this mission (persisted in Sprite filesystem)
+    const sessionDir = `${env.WORKSPACE}/.flightplan/sessions`;
+
+    // Use continueRecent to resume existing session, or create new one if none exists
+    // The session file will be saved to the workspace and checkpointed with the Sprite
     const { session } = await createAgentSession({
       cwd: env.WORKSPACE,
       model,
       thinkingLevel: "off",
       authStorage,
       modelRegistry,
-      sessionManager: SessionManager.inMemory(),
+      sessionManager: SessionManager.continueRecent(env.WORKSPACE, sessionDir),
       settingsManager: SettingsManager.inMemory({
-        compaction: { enabled: false },
+        compaction: { enabled: true }, // Enable compaction to manage context length
         retry: { enabled: true, maxRetries: 3 },
       }),
       tools: createCodingTools(env.WORKSPACE),
