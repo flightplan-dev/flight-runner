@@ -80,9 +80,15 @@ export async function runAgent(env: Env): Promise<void> {
     );
     console.log(`[Agent] Git configured for: ${env.GIT_AUTHOR_NAME} <${env.GIT_AUTHOR_EMAIL}>`);
 
-    // Debug: show git config
-    const { stdout: gitConfig } = await execAsync("git config --list", { cwd: env.WORKSPACE });
-    console.log(`[Agent] Git config:\n${gitConfig}`);
+    // Pull latest changes before starting (in case someone pushed externally)
+    try {
+      const repoUrl = `https://${env.GITHUB_USERNAME}:${env.GITHUB_TOKEN}@github.com/${env.REPO_OWNER}/${env.REPO_NAME}.git`;
+      await execAsync(`git pull ${repoUrl} ${env.BRANCH_NAME} --rebase --autostash`, { cwd: env.WORKSPACE });
+      console.log(`[Agent] Pulled latest changes from ${env.BRANCH_NAME}`);
+    } catch (pullError) {
+      // Branch may not exist on remote yet, that's fine
+      console.log(`[Agent] No remote changes to pull (branch may not exist yet)`);
+    }
 
     // Set mission creator for co-author tracking
     setMissionCreator({
