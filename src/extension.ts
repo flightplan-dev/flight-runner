@@ -51,11 +51,42 @@ export function createGitSyncExtension(config: {
       }
     }
 
+    // Bash commands that modify files
+    const bashWritePatterns = [
+      /\becho\s+.*>/,      // echo > file, echo >> file
+      /\bcat\s+.*>/,       // cat > file
+      /\bprintf\s+.*>/,    // printf > file
+      /\btee\b/,           // tee file
+      /\bsed\s+-i/,        // sed -i (in-place edit)
+      /\bawk\s+-i/,        // awk -i inplace
+      /\bmv\b/,            // mv (rename/move)
+      /\bcp\b/,            // cp (copy)
+      /\brm\b/,            // rm (delete)
+      /\btouch\b/,         // touch (create/update)
+      /\bmkdir\b/,         // mkdir
+      /\brmdir\b/,         // rmdir
+      /\bnpm\s+(install|i|ci|update)\b/,  // npm install
+      /\byarn\s+(add|install)\b/,         // yarn add/install
+      /\bpnpm\s+(add|install|i)\b/,       // pnpm add/install
+      /\bgit\s+(checkout|reset|clean|stash)/,  // git commands that modify working tree
+    ];
+
+    function isBashWriteCommand(command: string): boolean {
+      return bashWritePatterns.some((pattern) => pattern.test(command));
+    }
+
     // Intercept file modification tools
     pi.on("tool_call", async (event, _ctx) => {
-      // Only intercept write/edit operations
+      // Check write/edit tools
       const writeTools = ["write", "edit"];
-      if (!writeTools.includes(event.toolName)) {
+      const isWriteTool = writeTools.includes(event.toolName);
+      
+      // Check bash commands that modify files
+      const isBashWrite = event.toolName === "bash" && 
+        event.input?.command && 
+        isBashWriteCommand(event.input.command as string);
+
+      if (!isWriteTool && !isBashWrite) {
         return;
       }
 
