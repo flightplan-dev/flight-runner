@@ -8,6 +8,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import {
   createAgentSession,
+  createCodingTools,
   discoverAuthStorage,
   discoverModels,
   SessionManager,
@@ -15,7 +16,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { Env } from "./types.js";
 import { EventReporter } from "./reporter.js";
-import { createTools, setMissionCreator, addContributor } from "./tools/index.js";
+import { createCustomTools, setMissionCreator, addContributor } from "./tools/index.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 
 const execAsync = promisify(exec);
@@ -120,7 +121,8 @@ export async function runAgent(env: Env): Promise<void> {
         compaction: { enabled: true }, // Enable compaction to manage context length
         retry: { enabled: true, maxRetries: 3 },
       }),
-      tools: createTools({ cwd: env.WORKSPACE, env, reporter }),
+      tools: createCodingTools(env.WORKSPACE),
+      customTools: createCustomTools({ cwd: env.WORKSPACE, env, reporter }),
       // Disable discovery (no extensions, skills, context files in sandbox)
       skills: [],
       contextFiles: [],

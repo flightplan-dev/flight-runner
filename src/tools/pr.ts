@@ -8,7 +8,7 @@
 import { exec } from "child_process";
 import { promisify } from "util";
 import { Type } from "@sinclair/typebox";
-import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { Env } from "../types.js";
 import type { EventReporter } from "../reporter.js";
 
@@ -113,7 +113,7 @@ export interface CreatePrToolOptions {
   reporter: EventReporter;
 }
 
-export function createPrTool(options: CreatePrToolOptions): AgentTool<typeof createPrSchema> {
+export function createPrTool(options: CreatePrToolOptions): ToolDefinition<typeof createPrSchema> {
   const { cwd, env, reporter } = options;
 
   return {
@@ -122,7 +122,7 @@ export function createPrTool(options: CreatePrToolOptions): AgentTool<typeof cre
     description:
       "Create a pull request on GitHub. Only call this when your implementation is complete and you've verified the changes work (e.g., tests pass). This will commit any uncommitted changes, push to the branch, and open a PR.",
     parameters: createPrSchema,
-    execute: async (_toolCallId, { title, body }) => {
+    execute: async (_toolCallId, { title, body }, _onUpdate, _ctx, _signal) => {
       try {
         // 1. Commit any uncommitted changes with co-authors
         if (await hasUncommittedChanges(cwd)) {
@@ -140,8 +140,10 @@ export function createPrTool(options: CreatePrToolOptions): AgentTool<typeof cre
           console.log(`[create_pr] Committed changes to ${filesPreview}`);
         }
 
-        // 2. Push to remote
-        await runGit(cwd, `push origin ${env.BRANCH_NAME}`);
+        // 2. Push to remote (using token for auth)
+        // Configure git to use the token for this push
+        const repoUrl = `https://x-access-token:${env.GITHUB_TOKEN}@github.com/${env.REPO_OWNER}/${env.REPO_NAME}.git`;
+        await runGit(cwd, `push ${repoUrl} HEAD:${env.BRANCH_NAME}`);
         console.log(`[create_pr] Pushed to origin/${env.BRANCH_NAME}`);
 
         // 3. Create PR via GitHub API

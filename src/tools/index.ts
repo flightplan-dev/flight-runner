@@ -1,25 +1,21 @@
 /**
  * Tools
  *
- * Combines pi-mono's coding tools with Flightplan-specific tools.
+ * Custom tools for flight-runner (used via customTools option).
  */
 
-import { createCodingTools } from "@mariozechner/pi-coding-agent";
-import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { createPrTool, type CreatePrToolOptions } from "./pr.js";
 
 export { setMissionCreator, addContributor } from "./pr.js";
 export type { Contributor } from "./pr.js";
 
-export interface CreateToolsOptions extends CreatePrToolOptions {}
+export interface CreateCustomToolsOptions extends CreatePrToolOptions {}
 
 /**
- * Create all tools for flight-runner.
- * Includes pi-mono coding tools (read, write, edit, bash, etc.) plus Flightplan tools (create_pr).
+ * Create custom tools for flight-runner.
+ * These are registered via customTools option (in addition to built-in coding tools).
  */
-export function createTools(options: CreateToolsOptions): AgentTool<any>[] {
-  const codingTools = createCodingTools(options.cwd);
-  const prTool = createPrTool(options);
-
-  return [...codingTools, prTool];
+export function createCustomTools(options: CreateCustomToolsOptions): ToolDefinition<any>[] {
+  return [createPrTool(options)];
 }
