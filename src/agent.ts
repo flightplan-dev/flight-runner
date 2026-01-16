@@ -145,6 +145,9 @@ export async function runAgent(env: Env): Promise<void> {
     let currentMessageId: string | undefined;
     let currentMessageContent = "";
 
+    // Track tool names (tool_execution_end doesn't include toolName)
+    const toolNames = new Map<string, string>();
+
     // Subscribe to events and forward to Gateway
     session.subscribe(async (event) => {
       switch (event.type) {
@@ -179,18 +182,22 @@ export async function runAgent(env: Env): Promise<void> {
           break;
 
         case "message_end":
-          if (currentMessageId) {
+          // Only report message:end if there's actual text content
+          // (skip tool-only responses that have no text)
+          if (currentMessageId && currentMessageContent.trim()) {
             await reporter.report({
               type: "message:end",
               messageId: currentMessageId,
               content: currentMessageContent,
             });
-            currentMessageId = undefined;
-            currentMessageContent = "";
           }
+          currentMessageId = undefined;
+          currentMessageContent = "";
           break;
 
         case "tool_execution_start":
+          // Track tool name for tool_execution_end (which doesn't include it)
+          toolNames.set(event.toolCallId, event.toolName);
           await reporter.report({
             type: "tool:start",
             toolCallId: event.toolCallId,
@@ -215,9 +222,12 @@ export async function runAgent(env: Env): Promise<void> {
           // result contains the final tool output
           const resultContent = event.result?.content?.[0];
           const output = resultContent && "text" in resultContent ? resultContent.text : JSON.stringify(event.result);
+          const toolName = toolNames.get(event.toolCallId) || "tool";
+          toolNames.delete(event.toolCallId); // Clean up
           await reporter.report({
             type: "tool:end",
             toolCallId: event.toolCallId,
+            toolName,
             output,
             isError: event.isError,
           });

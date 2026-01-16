@@ -111,6 +111,7 @@ export interface ToolUpdateEvent extends BaseEvent {
 export interface ToolEndEvent extends BaseEvent {
   type: "tool:end";
   toolCallId: string;
+  toolName: string;
   output: string;
   isError?: boolean;
 }
