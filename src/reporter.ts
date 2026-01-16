@@ -2,8 +2,10 @@
  * Event Reporter
  *
  * Sends agent events back to the Gateway via HTTP POST.
+ * Uses HMAC signatures for authentication.
  */
 
+import { createHmac } from "crypto";
 import type {
   AgentEvent,
   AgentStartEvent,
@@ -30,16 +32,23 @@ type ReportableEvent =
   | Omit<ToolUpdateEvent, "timestamp" | "missionId">
   | Omit<ToolEndEvent, "timestamp" | "missionId">;
 
+/**
+ * Sign a payload with HMAC-SHA256
+ */
+function signPayload(secret: string, payload: string): string {
+  return createHmac("sha256", secret).update(payload).digest("hex");
+}
+
 export class EventReporter {
   private gatewayUrl: string;
-  private gatewayApiKey: string;
+  private webhookSecret: string;
   private missionId: string;
   private eventQueue: AgentEvent[] = [];
   private isFlushing = false;
 
   constructor(env: Env) {
     this.gatewayUrl = env.GATEWAY_URL;
-    this.gatewayApiKey = env.GATEWAY_API_KEY;
+    this.webhookSecret = env.WEBHOOK_SECRET;
     this.missionId = env.MISSION_ID;
   }
 
@@ -82,22 +91,24 @@ export class EventReporter {
    */
   private async sendEvent(event: AgentEvent): Promise<void> {
     const url = `${this.gatewayUrl}/api/missions/${this.missionId}/events`;
+    const body = JSON.stringify(event);
+    const signature = signPayload(this.webhookSecret, body);
 
     try {
       const response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${this.gatewayApiKey}`,
+          "X-Flightplan-Signature": `sha256=${signature}`,
         },
-        body: JSON.stringify(event),
+        body,
       });
 
       if (!response.ok) {
-        const body = await response.text();
+        const responseBody = await response.text();
         console.error(
           `[EventReporter] Failed to send event: ${response.status} ${response.statusText}`,
-          body,
+          responseBody,
         );
       }
     } catch (error) {

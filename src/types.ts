@@ -10,7 +10,7 @@ import { z } from "zod";
 
 export const EnvSchema = z.object({
   GATEWAY_URL: z.string().url(),
-  GATEWAY_API_KEY: z.string().min(1), // Organization API key for webhook auth
+  WEBHOOK_SECRET: z.string().min(1), // HMAC secret for signing webhook requests
   MISSION_ID: z.string().uuid(),
   PROMPT: z.string().min(1),
   MODEL: z.string().min(1),
