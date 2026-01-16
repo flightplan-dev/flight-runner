@@ -140,10 +140,9 @@ export function createPrTool(options: CreatePrToolOptions): ToolDefinition<typeo
           console.log(`[create_pr] Committed changes to ${filesPreview}`);
         }
 
-        // 2. Push to remote (using OAuth token for auth)
-        // Use username:token format for GitHub OAuth
+        // 2. Push to remote with upstream tracking
         const repoUrl = `https://${env.GITHUB_USERNAME}:${env.GITHUB_TOKEN}@github.com/${env.REPO_OWNER}/${env.REPO_NAME}.git`;
-        await runGit(cwd, `push ${repoUrl} HEAD:${env.BRANCH_NAME}`);
+        await runGit(cwd, `push -u ${repoUrl} HEAD:${env.BRANCH_NAME}`);
         console.log(`[create_pr] Pushed to origin/${env.BRANCH_NAME}`);
 
         // 3. Create PR via GitHub API
@@ -173,27 +172,33 @@ export function createPrTool(options: CreatePrToolOptions): ToolDefinition<typeo
 
         const pr = (await response.json()) as { number: number; html_url: string };
 
-        // 4. Add assignees (mission creator via their GitHub username)
-        try {
-          await fetch(
-            `https://api.github.com/repos/${env.REPO_OWNER}/${env.REPO_NAME}/issues/${pr.number}/assignees`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-                Accept: "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                assignees: [env.GITHUB_USERNAME],
-              }),
+        // 4. Add assignee (mission creator)
+        if (env.PR_ASSIGNEE) {
+          try {
+            const assigneeResponse = await fetch(
+              `https://api.github.com/repos/${env.REPO_OWNER}/${env.REPO_NAME}/issues/${pr.number}/assignees`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+                  Accept: "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  assignees: [env.PR_ASSIGNEE],
+                }),
+              }
+            );
+            if (assigneeResponse.ok) {
+              console.log(`[create_pr] Added ${env.PR_ASSIGNEE} as assignee`);
+            } else {
+              console.warn(`[create_pr] Failed to add assignee: ${await assigneeResponse.text()}`);
             }
-          );
-          console.log(`[create_pr] Added ${env.GITHUB_USERNAME} as assignee`);
-        } catch (assignError) {
-          // Don't fail PR creation if assignee fails
-          console.warn(`[create_pr] Failed to add assignee:`, assignError);
+          } catch (assignError) {
+            // Don't fail PR creation if assignee fails
+            console.warn(`[create_pr] Failed to add assignee:`, assignError);
+          }
         }
 
         // 5. Report PR created to Gateway

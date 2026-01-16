@@ -26,6 +26,7 @@ export const EnvSchema = z.object({
   REPO_NAME: z.string().min(1),
   BRANCH_NAME: z.string().min(1),
   BASE_BRANCH: z.string().min(1).default("main"),
+  PR_ASSIGNEE: z.string().default(""), // Mission creator's GitHub username for PR assignee
   // Prompt sender (for co-author tracking)
   PROMPT_SENDER_ID: z.string().min(1),
   PROMPT_SENDER_NAME: z.string().min(1),
