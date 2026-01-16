@@ -1,0 +1,31 @@
+{
+  "name": "flight-runner",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Agent runner for Flightplan missions - runs inside sandboxes",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "flight-runner": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "openai": "^4.104.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
