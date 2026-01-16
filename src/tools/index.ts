@@ -7,11 +7,12 @@
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { createPrTool, type CreatePrToolOptions } from "./pr.js";
 import { createPrStatusTool, type CreatePrStatusToolOptions } from "./pr-status.js";
+import { createGetCiLogsTool, type GetCiLogsToolOptions } from "./ci-logs.js";
 
 export { setMissionCreator, addContributor } from "./pr.js";
 export type { Contributor } from "./pr.js";
 
-export interface CreateCustomToolsOptions extends CreatePrToolOptions, CreatePrStatusToolOptions {}
+export interface CreateCustomToolsOptions extends CreatePrToolOptions, CreatePrStatusToolOptions, GetCiLogsToolOptions {}
 
 /**
  * Create custom tools for flight-runner.
@@ -21,5 +22,6 @@ export function createCustomTools(options: CreateCustomToolsOptions): ToolDefini
   return [
     createPrTool(options),
     createPrStatusTool(options),
+    createGetCiLogsTool(options),
   ];
 }

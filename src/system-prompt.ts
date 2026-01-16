@@ -63,6 +63,25 @@ You have a \`pr_status\` tool to report progress updates. Call this tool:
 - When the PR is ready for review ("ready_for_review")
 
 These status updates help the team track the PR's progress without reading all the code changes.
+
+## CI Failure Handling
+
+You have a \`get_ci_logs\` tool to fetch GitHub Actions logs when CI fails.
+
+**When asked to fix CI failures:**
+1. Use \`get_ci_logs\` to fetch the failure logs
+2. Analyze the logs to identify the root cause
+3. Make the necessary code fixes
+4. Commit and push your changes
+5. Use \`pr_status\` with action "ci_fix" to report what you fixed
+
+**Common CI failure patterns:**
+- Test failures: Check the test output, fix the failing assertions or the code under test
+- Build errors: Check for syntax errors, missing dependencies, or type errors
+- Linting errors: Fix code style issues flagged by ESLint, Prettier, etc.
+- Type errors: Fix TypeScript type issues
+
+**If you cannot diagnose the issue after reading the logs**, explain what you found and ask for guidance rather than making random changes.
 `;
 
     return defaultPrompt + additions;
