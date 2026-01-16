@@ -141,8 +141,8 @@ export function createPrTool(options: CreatePrToolOptions): ToolDefinition<typeo
         }
 
         // 2. Push to remote (using OAuth token for auth)
-        // Use token as username with empty password for GitHub OAuth
-        const repoUrl = `https://${env.GITHUB_TOKEN}@github.com/${env.REPO_OWNER}/${env.REPO_NAME}.git`;
+        // Use username:token format for GitHub OAuth
+        const repoUrl = `https://${env.GITHUB_USERNAME}:${env.GITHUB_TOKEN}@github.com/${env.REPO_OWNER}/${env.REPO_NAME}.git`;
         await runGit(cwd, `push ${repoUrl} HEAD:${env.BRANCH_NAME}`);
         console.log(`[create_pr] Pushed to origin/${env.BRANCH_NAME}`);
 

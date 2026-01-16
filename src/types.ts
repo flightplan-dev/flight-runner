@@ -20,6 +20,7 @@ export const EnvSchema = z.object({
   GIT_AUTHOR_NAME: z.string().min(1),
   GIT_AUTHOR_EMAIL: z.string().email(),
   // GitHub PR creation
+  GITHUB_USERNAME: z.string().min(1),
   GITHUB_TOKEN: z.string().min(1),
   REPO_OWNER: z.string().min(1),
   REPO_NAME: z.string().min(1),
