@@ -18,10 +18,10 @@ export function createGitSyncExtension(config: {
   cwd: string;
 }) {
   return function gitSyncExtension(pi: ExtensionAPI) {
-    let hasPulled = false;
-    let branchIsDirty = false;
+    // Track if we've pulled since last commit (or session start)
+    let hasPulledSinceCommit = false;
 
-    // Check if branch is dirty
+    // Check if branch is dirty (has uncommitted changes)
     async function checkDirty(): Promise<boolean> {
       try {
         const { stdout } = await pi.exec("git", ["status", "--porcelain"], {
@@ -90,33 +90,40 @@ export function createGitSyncExtension(config: {
         return;
       }
 
-      // Already pulled this session
-      if (hasPulled) {
+      // Already pulled since last commit
+      if (hasPulledSinceCommit) {
         return;
       }
 
-      // Check if branch is dirty
-      if (!branchIsDirty) {
-        branchIsDirty = await checkDirty();
-      }
+      // Check if branch is dirty (has uncommitted changes)
+      const isDirty = await checkDirty();
 
-      // Only pull if branch is clean
-      if (!branchIsDirty) {
-        hasPulled = true;
+      if (!isDirty) {
+        // Branch is clean - pull latest before making changes
+        hasPulledSinceCommit = true;
         await pullLatest();
-        // Recheck dirty status after pull
-        branchIsDirty = await checkDirty();
       } else {
-        // Branch already has local changes, skip pull
-        hasPulled = true;
+        // Branch has uncommitted changes - can't pull safely
+        hasPulledSinceCommit = true;
         console.log(`[GitSync] Skipping pull - branch has uncommitted changes`);
       }
     });
 
-    // Reset state on agent end (new session will need fresh pull)
+    // Detect git commit commands - reset pull flag so we can pull again
+    pi.on("tool_result", async (event, _ctx) => {
+      if (event.toolName === "bash" && event.input?.command) {
+        const command = event.input.command as string;
+        // Check if this was a commit command
+        if (/\bgit\s+commit\b/.test(command) && !event.isError) {
+          console.log(`[GitSync] Commit detected - will pull before next modification`);
+          hasPulledSinceCommit = false;
+        }
+      }
+    });
+
+    // Reset state on agent end
     pi.on("agent_end", async () => {
-      hasPulled = false;
-      branchIsDirty = false;
+      hasPulledSinceCommit = false;
     });
   };
 }
