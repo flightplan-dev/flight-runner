@@ -108,8 +108,8 @@ export async function runAgent(env: Env): Promise<void> {
       throw new Error(`Model not found: ${provider}/${modelId}`);
     }
 
-    // Session directory for this mission (persisted in Sprite filesystem)
-    const sessionDir = `${env.WORKSPACE}/.flightplan/sessions`;
+    // Session directory for this mission (outside workspace to avoid committing)
+    const sessionDir = `/tmp/flightplan/sessions/${env.MISSION_ID}`;
 
     // Use continueRecent to resume existing session, or create new one if none exists
     // The session file will be saved to the workspace and checkpointed with the Sprite
