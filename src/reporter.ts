@@ -19,6 +19,7 @@ import type {
   ToolEndEvent,
   SystemCompactionEvent,
   PrCreatedEvent,
+  PrStatusEvent,
   Env,
 } from "./types.js";
 
@@ -34,7 +35,8 @@ type ReportableEvent =
   | Omit<ToolUpdateEvent, "timestamp" | "missionId">
   | Omit<ToolEndEvent, "timestamp" | "missionId">
   | Omit<SystemCompactionEvent, "timestamp" | "missionId">
-  | Omit<PrCreatedEvent, "timestamp" | "missionId">;
+  | Omit<PrCreatedEvent, "timestamp" | "missionId">
+  | Omit<PrStatusEvent, "timestamp" | "missionId">;
 
 /**
  * Sign a payload with HMAC-SHA256

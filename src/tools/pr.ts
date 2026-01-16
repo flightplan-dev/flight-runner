@@ -172,6 +172,10 @@ export function createPrTool(options: CreatePrToolOptions): ToolDefinition<typeo
 
         const pr = (await response.json()) as { number: number; html_url: string };
 
+        // Store PR info globally for pr_status tool
+        (globalThis as any).__flightplan_pr_number = pr.number;
+        (globalThis as any).__flightplan_pr_url = pr.html_url;
+
         // 4. Add assignee (mission creator)
         if (env.PR_ASSIGNEE) {
           try {

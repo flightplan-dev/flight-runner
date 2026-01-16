@@ -36,6 +36,17 @@ You have a \`create_pr\` tool available to create GitHub pull requests.
 - Branch: ${env.BRANCH_NAME} → ${env.BASE_BRANCH}
 
 When you create a PR, the changes will be committed with proper attribution to the users who contributed prompts during this mission.
+
+## PR Status Updates
+
+You have a \`pr_status\` tool to report progress updates. Call this tool:
+- After pushing new commits ("pushed") - briefly describe what you changed
+- When addressing review feedback ("changes_requested") - explain what you fixed
+- When fixing CI/test failures ("ci_fix") - describe the fix
+- When resolving merge conflicts ("conflict_resolved")
+- When the PR is ready for review ("ready_for_review")
+
+These status updates help the team track the PR's progress without reading all the code changes.
 `;
 
     return defaultPrompt + additions;

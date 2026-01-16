@@ -50,7 +50,8 @@ export type AgentEventType =
   | "tool:update"
   | "tool:end"
   | "system:compaction"
-  | "pr:created";
+  | "pr:created"
+  | "pr:status";
 
 export interface BaseEvent {
   type: AgentEventType;
@@ -125,6 +126,22 @@ export interface PrCreatedEvent extends BaseEvent {
   prUrl: string;
 }
 
+export type PrStatusAction = 
+  | "pushed"           // Pushed new commits to the PR branch
+  | "updated"          // General PR update
+  | "ready_for_review" // PR is ready for human review
+  | "changes_requested" // Responding to review feedback
+  | "ci_fix"           // Fixing CI failures
+  | "conflict_resolved"; // Resolved merge conflicts
+
+export interface PrStatusEvent extends BaseEvent {
+  type: "pr:status";
+  action: PrStatusAction;
+  message: string;
+  prNumber?: number;
+  prUrl?: string;
+}
+
 export type AgentEvent =
   | AgentStartEvent
   | AgentEndEvent
@@ -136,4 +153,5 @@ export type AgentEvent =
   | ToolUpdateEvent
   | ToolEndEvent
   | SystemCompactionEvent
+  | PrStatusEvent
   | PrCreatedEvent;
