@@ -18,6 +18,7 @@ import type { Env } from "./types.js";
 import { EventReporter } from "./reporter.js";
 import { createCustomTools, setMissionCreator, addContributor } from "./tools/index.js";
 import { buildSystemPrompt } from "./system-prompt.js";
+import { createGitSyncExtension } from "./extension.js";
 
 const execAsync = promisify(exec);
 
@@ -80,15 +81,8 @@ export async function runAgent(env: Env): Promise<void> {
     );
     console.log(`[Agent] Git configured for: ${env.GIT_AUTHOR_NAME} <${env.GIT_AUTHOR_EMAIL}>`);
 
-    // Pull latest changes before starting (in case someone pushed externally)
-    try {
-      const repoUrl = `https://${env.GITHUB_USERNAME}:${env.GITHUB_TOKEN}@github.com/${env.REPO_OWNER}/${env.REPO_NAME}.git`;
-      await execAsync(`git pull ${repoUrl} ${env.BRANCH_NAME} --rebase --autostash`, { cwd: env.WORKSPACE });
-      console.log(`[Agent] Pulled latest changes from ${env.BRANCH_NAME}`);
-    } catch (pullError) {
-      // Branch may not exist on remote yet, that's fine
-      console.log(`[Agent] No remote changes to pull (branch may not exist yet)`);
-    }
+    // Build repo URL for git operations
+    const repoUrl = `https://${env.GITHUB_USERNAME}:${env.GITHUB_TOKEN}@github.com/${env.REPO_OWNER}/${env.REPO_NAME}.git`;
 
     // Set mission creator for co-author tracking
     setMissionCreator({
@@ -133,6 +127,14 @@ export async function runAgent(env: Env): Promise<void> {
       }),
       tools: createCodingTools(env.WORKSPACE),
       customTools: createCustomTools({ cwd: env.WORKSPACE, env, reporter }),
+      // Git sync extension - pulls latest before first file write if branch is clean
+      extensions: [
+        createGitSyncExtension({
+          repoUrl,
+          branchName: env.BRANCH_NAME,
+          cwd: env.WORKSPACE,
+        }),
+      ],
       // Disable discovery (no extensions, skills, context files in sandbox)
       skills: [],
       contextFiles: [],
