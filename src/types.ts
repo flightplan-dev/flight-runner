@@ -33,7 +33,8 @@ export type AgentEventType =
   | "message:end"
   | "tool:start"
   | "tool:update"
-  | "tool:end";
+  | "tool:end"
+  | "system:compaction";
 
 export interface BaseEvent {
   type: AgentEventType;
@@ -97,6 +98,11 @@ export interface ToolEndEvent extends BaseEvent {
   isError?: boolean;
 }
 
+export interface SystemCompactionEvent extends BaseEvent {
+  type: "system:compaction";
+  summary: string;
+}
+
 export type AgentEvent =
   | AgentStartEvent
   | AgentEndEvent
@@ -106,4 +112,5 @@ export type AgentEvent =
   | MessageEndEvent
   | ToolStartEvent
   | ToolUpdateEvent
-  | ToolEndEvent;
+  | ToolEndEvent
+  | SystemCompactionEvent;

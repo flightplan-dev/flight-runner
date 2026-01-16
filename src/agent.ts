@@ -171,7 +171,7 @@ export async function runAgent(env: Env): Promise<void> {
           }
           break;
 
-        case "tool_execution_end":
+        case "tool_execution_end": {
           // result contains the final tool output
           const resultContent = event.result?.content?.[0];
           const output = resultContent && "text" in resultContent ? resultContent.text : JSON.stringify(event.result);
@@ -180,6 +180,15 @@ export async function runAgent(env: Env): Promise<void> {
             toolCallId: event.toolCallId,
             output,
             isError: event.isError,
+          });
+          break;
+        }
+
+        case "auto_compaction_end":
+          // Context was compacted to manage token limits
+          await reporter.report({
+            type: "system:compaction",
+            summary: event.summary,
           });
           break;
       }
