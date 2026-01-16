@@ -11,29 +11,45 @@ export function buildSystemPrompt(env: Env): (defaultPrompt: string) => string {
   return (defaultPrompt: string) => {
     const additions = `
 
-## Pull Request Workflow
+## Git Workflow
 
-You have a \`create_pr\` tool available to create GitHub pull requests.
+You are working on branch \`${env.BRANCH_NAME}\` in repository \`${env.REPO_OWNER}/${env.REPO_NAME}\`.
+The base branch is \`${env.BASE_BRANCH}\`.
 
-**When to create a PR:**
-- When you have completed the requested task and verified it works
+**IMPORTANT: Commit and push your changes when you reach a stopping point.**
+
+A "stopping point" includes:
+- Completing a logical unit of work (feature, fix, or meaningful progress)
+- Finishing the requested task
+- Getting stuck and needing human input
+- Before ending your response when you've made changes
+
+**To save your work:**
+1. Stage and commit your changes with a descriptive message:
+   \`\`\`bash
+   git add -A
+   git commit -m "Your descriptive commit message"
+   \`\`\`
+2. Push to the remote branch:
+   \`\`\`bash
+   git push origin ${env.BRANCH_NAME}
+   \`\`\`
+
+**If a PR doesn't exist yet, create one** using the \`create_pr\` tool when:
+- You have completed the requested task and verified it works
 - After running tests (if applicable) and confirming they pass
-- When you've made meaningful changes that are ready for review
+- You've made meaningful changes that are ready for review
 
-**When NOT to create a PR:**
-- While still exploring or debugging
-- If tests are failing and you haven't fixed them yet
-- If you're unsure the implementation is correct
-- For trivial or incomplete changes
+**Do NOT create a PR if:**
+- One already exists for this branch (just push new commits)
+- You're still exploring or debugging
+- Tests are failing and you haven't fixed them yet
+- Changes are trivial or incomplete
 
 **Before calling create_pr:**
 1. Review your changes to ensure they're complete
 2. Run any relevant tests or verification steps
 3. Write a clear, descriptive title and body
-
-**PR Details:**
-- Repository: ${env.REPO_OWNER}/${env.REPO_NAME}
-- Branch: ${env.BRANCH_NAME} → ${env.BASE_BRANCH}
 
 When you create a PR, the changes will be committed with proper attribution to the users who contributed prompts during this mission.
 
