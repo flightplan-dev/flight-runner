@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@mariozechner/pi-coding-agent": "^0.43.0",
+    "@sinclair/typebox": "^0.34.47",
     "zod": "^3.24.2"
   },
   "devDependencies": {

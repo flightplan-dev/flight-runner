@@ -4,16 +4,21 @@
  * Wraps pi-mono's createAgentSession to run coding tasks and stream events back to Gateway.
  */
 
+import { exec } from "child_process";
+import { promisify } from "util";
 import {
   createAgentSession,
   discoverAuthStorage,
   discoverModels,
   SessionManager,
   SettingsManager,
-  createCodingTools,
 } from "@mariozechner/pi-coding-agent";
 import type { Env } from "./types.js";
 import { EventReporter } from "./reporter.js";
+import { createTools, setMissionCreator, addContributor } from "./tools/index.js";
+import { buildSystemPrompt } from "./system-prompt.js";
+
+const execAsync = promisify(exec);
 
 // =============================================================================
 // Model Mapping
@@ -67,6 +72,26 @@ export async function runAgent(env: Env): Promise<void> {
   });
 
   try {
+    // Configure git attribution (mission creator is primary author)
+    await execAsync(
+      `git config user.name "${env.GIT_AUTHOR_NAME}" && git config user.email "${env.GIT_AUTHOR_EMAIL}"`,
+      { cwd: env.WORKSPACE }
+    );
+    console.log(`[Agent] Git configured for: ${env.GIT_AUTHOR_NAME} <${env.GIT_AUTHOR_EMAIL}>`);
+
+    // Set mission creator for co-author tracking
+    setMissionCreator({
+      id: env.PROMPT_SENDER_ID, // On first run, sender is the creator
+      name: env.GIT_AUTHOR_NAME,
+      email: env.GIT_AUTHOR_EMAIL,
+    });
+
+    // Track prompt sender as contributor (excluded if same as mission creator)
+    addContributor({
+      id: env.PROMPT_SENDER_ID,
+      name: env.PROMPT_SENDER_NAME,
+      email: env.PROMPT_SENDER_EMAIL,
+    });
     // Set up auth storage with the provided API key
     const authStorage = discoverAuthStorage();
     authStorage.setRuntimeApiKey(provider, env.LLM_API_KEY);
@@ -89,12 +114,13 @@ export async function runAgent(env: Env): Promise<void> {
       thinkingLevel: "off",
       authStorage,
       modelRegistry,
+      systemPrompt: buildSystemPrompt(env),
       sessionManager: SessionManager.continueRecent(env.WORKSPACE, sessionDir),
       settingsManager: SettingsManager.inMemory({
         compaction: { enabled: true }, // Enable compaction to manage context length
         retry: { enabled: true, maxRetries: 3 },
       }),
-      tools: createCodingTools(env.WORKSPACE),
+      tools: createTools({ cwd: env.WORKSPACE, env, reporter }),
       // Disable discovery (no extensions, skills, context files in sandbox)
       skills: [],
       contextFiles: [],
@@ -186,10 +212,12 @@ export async function runAgent(env: Env): Promise<void> {
 
         case "auto_compaction_end":
           // Context was compacted to manage token limits
-          await reporter.report({
-            type: "system:compaction",
-            summary: event.summary,
-          });
+          if (event.result) {
+            await reporter.report({
+              type: "system:compaction",
+              summary: event.result.summary,
+            });
+          }
           break;
       }
     });

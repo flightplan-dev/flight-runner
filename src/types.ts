@@ -16,6 +16,19 @@ export const EnvSchema = z.object({
   MODEL: z.string().min(1),
   LLM_API_KEY: z.string().min(1),
   WORKSPACE: z.string().min(1),
+  // Git attribution
+  GIT_AUTHOR_NAME: z.string().min(1),
+  GIT_AUTHOR_EMAIL: z.string().email(),
+  // GitHub PR creation
+  GITHUB_TOKEN: z.string().min(1),
+  REPO_OWNER: z.string().min(1),
+  REPO_NAME: z.string().min(1),
+  BRANCH_NAME: z.string().min(1),
+  BASE_BRANCH: z.string().min(1).default("main"),
+  // Prompt sender (for co-author tracking)
+  PROMPT_SENDER_ID: z.string().min(1),
+  PROMPT_SENDER_NAME: z.string().min(1),
+  PROMPT_SENDER_EMAIL: z.string().email(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -34,7 +47,8 @@ export type AgentEventType =
   | "tool:start"
   | "tool:update"
   | "tool:end"
-  | "system:compaction";
+  | "system:compaction"
+  | "pr:created";
 
 export interface BaseEvent {
   type: AgentEventType;
@@ -103,6 +117,12 @@ export interface SystemCompactionEvent extends BaseEvent {
   summary: string;
 }
 
+export interface PrCreatedEvent extends BaseEvent {
+  type: "pr:created";
+  prNumber: number;
+  prUrl: string;
+}
+
 export type AgentEvent =
   | AgentStartEvent
   | AgentEndEvent
@@ -113,4 +133,5 @@ export type AgentEvent =
   | ToolStartEvent
   | ToolUpdateEvent
   | ToolEndEvent
-  | SystemCompactionEvent;
+  | SystemCompactionEvent
+  | PrCreatedEvent;
