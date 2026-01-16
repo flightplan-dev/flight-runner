@@ -109,7 +109,7 @@ export async function runAgent(env: Env): Promise<void> {
     }
 
     // Session directory for this mission (outside workspace to avoid committing)
-    const sessionDir = `/tmp/flightplan/sessions/${env.MISSION_ID}`;
+    const sessionDir = `/opt/flightplan/sessions/${env.MISSION_ID}`;
 
     // Use continueRecent to resume existing session, or create new one if none exists
     // The session file will be saved to the workspace and checkpointed with the Sprite
