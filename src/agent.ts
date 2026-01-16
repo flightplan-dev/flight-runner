@@ -80,6 +80,10 @@ export async function runAgent(env: Env): Promise<void> {
     );
     console.log(`[Agent] Git configured for: ${env.GIT_AUTHOR_NAME} <${env.GIT_AUTHOR_EMAIL}>`);
 
+    // Debug: show git config
+    const { stdout: gitConfig } = await execAsync("git config --list", { cwd: env.WORKSPACE });
+    console.log(`[Agent] Git config:\n${gitConfig}`);
+
     // Set mission creator for co-author tracking
     setMissionCreator({
       id: env.PROMPT_SENDER_ID, // On first run, sender is the creator
