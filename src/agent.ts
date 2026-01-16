@@ -102,8 +102,11 @@ export async function runAgent(env: Env): Promise<void> {
     });
 
     // Track message content for message:end event
+    // We defer sending message:start until we actually have text content
+    // (some messages only contain tool calls or thinking blocks)
     let currentMessageId: string | undefined;
     let currentMessageContent = "";
+    let messageStartSent = false;
 
     // Subscribe to events and forward to Gateway
     session.subscribe(async (event) => {
@@ -117,18 +120,26 @@ export async function runAgent(env: Env): Promise<void> {
           break;
 
         case "message_start":
+          // Don't send message:start yet - wait for actual text content
           currentMessageId = `msg_${Date.now()}`;
           currentMessageContent = "";
-          await reporter.report({
-            type: "message:start",
-            messageId: currentMessageId,
-            role: "assistant",
-          });
+          messageStartSent = false;
           break;
 
         case "message_update":
           if (event.assistantMessageEvent.type === "text_delta" && currentMessageId) {
             const delta = event.assistantMessageEvent.delta;
+            
+            // Send message:start on first text delta (lazy initialization)
+            if (!messageStartSent) {
+              await reporter.report({
+                type: "message:start",
+                messageId: currentMessageId,
+                role: "assistant",
+              });
+              messageStartSent = true;
+            }
+            
             currentMessageContent += delta;
             await reporter.report({
               type: "message:delta",
@@ -139,15 +150,17 @@ export async function runAgent(env: Env): Promise<void> {
           break;
 
         case "message_end":
-          if (currentMessageId) {
+          // Only send message:end if we actually sent message:start
+          if (currentMessageId && messageStartSent && currentMessageContent) {
             await reporter.report({
               type: "message:end",
               messageId: currentMessageId,
               content: currentMessageContent,
             });
-            currentMessageId = undefined;
-            currentMessageContent = "";
           }
+          currentMessageId = undefined;
+          currentMessageContent = "";
+          messageStartSent = false;
           break;
 
         case "tool_execution_start":
