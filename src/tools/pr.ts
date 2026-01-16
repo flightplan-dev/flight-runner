@@ -120,7 +120,7 @@ export function createPrTool(options: CreatePrToolOptions): ToolDefinition<typeo
     name: "create_pr",
     label: "Create PR",
     description:
-      "Create a pull request on GitHub. Only call this when your implementation is complete and you've verified the changes work (e.g., tests pass). This will commit any uncommitted changes, push to the branch, and open a PR.",
+      "Create a pull request on GitHub. Call this when you've reached a stopping point and want to open a PR for review. Do NOT call if a PR already exists - just push new commits instead. This will commit any uncommitted changes, push, and open a PR.",
     parameters: createPrSchema,
     execute: async (_toolCallId, { title, body }, _onUpdate, _ctx, _signal) => {
       try {
