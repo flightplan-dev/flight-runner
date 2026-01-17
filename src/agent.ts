@@ -16,6 +16,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { Env } from "./types.js";
 import { EventReporter } from "./reporter.js";
+import { QueueClient, type QueuedMessage } from "./queue-client.js";
 import { createCustomTools, setMissionCreator, addContributor } from "./tools/index.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { createGitSyncExtension } from "./extension.js";
@@ -61,6 +62,7 @@ function resolveModel(modelName: string): { provider: string; modelId: string } 
 
 export async function runAgent(env: Env): Promise<void> {
   const reporter = new EventReporter(env);
+  const queueClient = new QueueClient(env);
   const { provider, modelId } = resolveModel(env.MODEL);
 
   console.log(`[Agent] Starting with model: ${provider}/${modelId}`);
@@ -250,12 +252,67 @@ export async function runAgent(env: Env): Promise<void> {
       }
     });
 
-    // Run the prompt with sender attribution
+    // Run the initial prompt with sender attribution
     const promptWithSender = `[${env.PROMPT_SENDER_NAME}]: ${env.PROMPT}`;
     await session.prompt(promptWithSender);
 
-    // Wait for agent to finish
+    // Wait for agent to finish initial prompt
     await session.agent.waitForIdle();
+
+    // Poll for queued messages and process them
+    let continuePolling = true;
+    while (continuePolling) {
+      const queuedMessages = await queueClient.fetchPendingMessages();
+      
+      if (queuedMessages.length === 0) {
+        console.log("[Agent] No queued messages, finishing");
+        continuePolling = false;
+        break;
+      }
+
+      console.log(`[Agent] Found ${queuedMessages.length} queued message(s)`);
+
+      for (const msg of queuedMessages) {
+        // Mark as delivered
+        await queueClient.markDelivered(msg.id);
+        
+        // Track contributor for co-author attribution
+        addContributor({
+          id: msg.senderId,
+          name: msg.senderName,
+          email: "", // Email not available from queue, but ID is sufficient for dedup
+        });
+
+        // Format message with sender attribution
+        const formattedMessage = `[${msg.senderName}]: ${msg.text}`;
+        
+        console.log(`[Agent] Processing queued message (${msg.behavior}): ${msg.text.slice(0, 100)}...`);
+
+        if (msg.behavior === "steer") {
+          // Interrupt: use steer() to deliver after current tool completes
+          // This is used when the agent might still be mid-turn
+          if (session.isStreaming) {
+            console.log("[Agent] Using steer() - agent is streaming");
+            await session.steer(formattedMessage);
+          } else {
+            // Agent is idle, just use regular prompt
+            console.log("[Agent] Using prompt() - agent is idle");
+            await session.prompt(formattedMessage);
+          }
+        } else {
+          // followUp: agent is idle at this point, use regular prompt
+          console.log("[Agent] Using prompt() for followUp message");
+          await session.prompt(formattedMessage);
+        }
+
+        // Wait for agent to finish processing this message
+        await session.agent.waitForIdle();
+
+        // Mark as processed
+        await queueClient.markProcessed(msg.id);
+        console.log(`[Agent] Processed message ${msg.id}`);
+      }
+    }
 
     // Report completion
     await reporter.report({
