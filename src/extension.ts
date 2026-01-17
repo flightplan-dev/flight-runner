@@ -1,9 +1,8 @@
 /**
  * Git Sync Extension
  *
- * Pulls latest changes from remote before first file modification.
- * This handles cases where someone pushed changes externally while
- * the agent was idle or checkpointed.
+ * - Updates the `origin` remote URL with fresh credentials on startup
+ * - Pulls latest changes from remote before first file modification
  *
  * Only pulls when:
  * 1. Branch is clean (no uncommitted changes)
@@ -20,6 +19,22 @@ export function createGitSyncExtension(config: {
   return function gitSyncExtension(pi: ExtensionAPI) {
     // Track if we've pulled since last commit (or session start)
     let hasPulledSinceCommit = false;
+    let hasUpdatedRemote = false;
+
+    // Update origin remote with fresh token (handles checkpointed sprites with stale tokens)
+    async function updateRemoteUrl(): Promise<void> {
+      if (hasUpdatedRemote) return;
+      hasUpdatedRemote = true;
+
+      try {
+        await pi.exec("git", ["remote", "set-url", "origin", config.repoUrl], {
+          cwd: config.cwd,
+        });
+        console.log(`[GitSync] Updated origin remote URL with fresh credentials`);
+      } catch (error) {
+        console.warn(`[GitSync] Failed to update remote URL:`, error);
+      }
+    }
 
     // Check if branch is dirty (has uncommitted changes)
     async function checkDirty(): Promise<boolean> {
@@ -77,6 +92,9 @@ export function createGitSyncExtension(config: {
 
     // Intercept file modification tools
     pi.on("tool_call", async (event, _ctx) => {
+      // Always ensure remote URL is updated with fresh token
+      await updateRemoteUrl();
+
       // Check write/edit tools
       const writeTools = ["write", "edit"];
       const isWriteTool = writeTools.includes(event.toolName);
@@ -119,6 +137,11 @@ export function createGitSyncExtension(config: {
           hasPulledSinceCommit = false;
         }
       }
+    });
+
+    // Update remote URL on agent start (before any git operations)
+    pi.on("agent_start", async () => {
+      await updateRemoteUrl();
     });
 
     // Reset state on agent end
