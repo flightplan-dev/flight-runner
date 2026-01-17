@@ -74,6 +74,9 @@ export async function runAgent(env: Env): Promise<void> {
   });
 
   try {
+    // Build repo URL for git operations (with fresh token)
+    const repoUrl = `https://${env.GITHUB_USERNAME}:${env.GITHUB_TOKEN}@github.com/${env.REPO_OWNER}/${env.REPO_NAME}.git`;
+
     // Configure git attribution (mission creator is primary author)
     await execAsync(
       `git config user.name "${env.GIT_AUTHOR_NAME}" && git config user.email "${env.GIT_AUTHOR_EMAIL}"`,
@@ -81,8 +84,9 @@ export async function runAgent(env: Env): Promise<void> {
     );
     console.log(`[Agent] Git configured for: ${env.GIT_AUTHOR_NAME} <${env.GIT_AUTHOR_EMAIL}>`);
 
-    // Build repo URL for git operations
-    const repoUrl = `https://${env.GITHUB_USERNAME}:${env.GITHUB_TOKEN}@github.com/${env.REPO_OWNER}/${env.REPO_NAME}.git`;
+    // Update origin remote URL with fresh token (handles checkpointed sprites with stale tokens)
+    await execAsync(`git remote set-url origin "${repoUrl}"`, { cwd: env.WORKSPACE });
+    console.log(`[Agent] Updated origin remote with fresh credentials`);
 
     // Set mission creator for co-author tracking
     setMissionCreator({
