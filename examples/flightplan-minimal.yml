@@ -1,0 +1,8 @@
+# flightplan.yml - Minimal example
+# For simple projects that just need basic setup and test commands
+
+hooks:
+  setup:
+    - npm install
+  test:
+    command: npm test

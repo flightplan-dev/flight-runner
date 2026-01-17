@@ -1,0 +1,37 @@
+# flightplan.yml - Python/Django example
+
+services:
+  - postgres:16
+  - redis:7
+
+env:
+  DJANGO_SETTINGS_MODULE: myapp.settings.test
+  DATABASE_URL: "${POSTGRES_URL}"
+  REDIS_URL: "${REDIS_URL}"
+  SECRET_KEY: "${secrets.DJANGO_SECRET_KEY}"
+
+hooks:
+  setup:
+    - pip install -r requirements.txt
+    - python manage.py migrate
+
+  pre_test:
+    - python manage.py flush --no-input
+
+  test:
+    command: pytest -v --tb=short
+    timeout: 600
+
+dev_server:
+  command: python manage.py runserver 0.0.0.0:8000
+  port: 8000
+  wait_for: "Starting development server at"
+  timeout: 60
+
+ignore:
+  - __pycache__/
+  - .git/
+  - .venv/
+  - "*.pyc"
+  - .coverage
+  - htmlcov/

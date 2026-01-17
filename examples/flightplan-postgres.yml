@@ -1,0 +1,64 @@
+# flightplan.yml - Example with PostgreSQL
+# Full-stack Node.js app with database
+
+# Services the app depends on
+# Flightplan will spin these up automatically and inject connection URLs
+services:
+  - postgres:16    # PostgreSQL 16 → sets POSTGRES_URL env var
+  # - redis:7      # Redis 7 → sets REDIS_URL env var
+
+# Environment variables
+env:
+  NODE_ENV: test
+  PORT: 3000
+  # Interpolate the database URL from the postgres service
+  DATABASE_URL: "${POSTGRES_URL}"
+  # Pull API keys from organization secrets (set in Flightplan dashboard)
+  STRIPE_API_KEY: "${secrets.STRIPE_API_KEY}"
+  # Static values
+  LOG_LEVEL: debug
+
+# Lifecycle hooks
+hooks:
+  # After cloning the repo (runs once)
+  setup:
+    - npm install
+    - npx prisma generate
+    - npx prisma migrate deploy
+
+  # Before each test run (runs before every test execution)
+  pre_test:
+    - npx prisma migrate reset --force  # Reset DB to clean state
+
+  # How to run tests
+  test:
+    command: npm test
+    timeout: 300      # 5 minutes for test suite
+    retry: 2          # Retry flaky tests up to 2 times
+
+  # After PR is merged (optional - for cleanup, notifications, etc.)
+  post_merge:
+    - echo "Deployed to staging"
+
+# Dev server configuration
+dev_server:
+  command: npm run dev
+  port: 3000
+  # Watch stdout for Next.js/Express ready message
+  wait_for: "Ready on http://localhost:3000"
+  # Or poll an endpoint instead:
+  # ready_check:
+  #   path: /api/health
+  #   status: 200
+  #   interval: 1000   # Poll every 1 second
+  timeout: 120         # Max 2 minutes to start
+
+# File patterns to ignore in agent context (reduce noise)
+ignore:
+  - node_modules/
+  - .git/
+  - dist/
+  - .next/
+  - coverage/
+  - "*.log"
+  - ".env*"          # Don't include env files in context

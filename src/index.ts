@@ -18,6 +18,9 @@
 import { EnvSchema } from "./types.js";
 import { runAgent } from "./agent.js";
 
+// Re-export config module for external use
+export * from "./config.js";
+
 async function main(): Promise<void> {
   console.log("[flight-runner] Starting...");
 
@@ -49,4 +52,15 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+// Only run main() when executed directly (not when imported as a module)
+// In ESM, we can check import.meta.url against process.argv[1]
+import { fileURLToPath } from "url";
+import { resolve } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const scriptPath = process.argv[1] ? resolve(process.argv[1]) : "";
+
+// Run if executed directly (handles both dist/index.js and symlinked bin)
+if (scriptPath === __filename || scriptPath.endsWith("flight-runner")) {
+  main();
+}
