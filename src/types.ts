@@ -12,7 +12,7 @@ export const EnvSchema = z.object({
   GATEWAY_URL: z.string().url(),
   WEBHOOK_SECRET: z.string().min(1), // HMAC secret for signing webhook requests
   MISSION_ID: z.string().uuid(),
-  PROMPT: z.string().min(1),
+  // PROMPT is no longer passed via env - fetched from queue instead
   MODEL: z.string().min(1),
   LLM_API_KEY: z.string().min(1),
   WORKSPACE: z.string().min(1),
@@ -27,10 +27,6 @@ export const EnvSchema = z.object({
   BRANCH_NAME: z.string().min(1),
   BASE_BRANCH: z.string().min(1).default("main"),
   PR_ASSIGNEE: z.string().default(""), // Mission creator's GitHub username for PR assignee
-  // Prompt sender (for co-author tracking)
-  PROMPT_SENDER_ID: z.string().min(1),
-  PROMPT_SENDER_NAME: z.string().min(1),
-  PROMPT_SENDER_EMAIL: z.string().email(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

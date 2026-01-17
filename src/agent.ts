@@ -67,7 +67,16 @@ export async function runAgent(env: Env): Promise<void> {
 
   console.log(`[Agent] Starting with model: ${provider}/${modelId}`);
   console.log(`[Agent] Workspace: ${env.WORKSPACE}`);
-  console.log(`[Agent] Prompt: ${env.PROMPT.slice(0, 100)}...`);
+
+  // Fetch initial messages from queue (includes initial prompt + any follow-ups during setup)
+  const initialMessages = await queueClient.fetchPendingMessages();
+  
+  if (initialMessages.length === 0) {
+    console.log("[Agent] No messages in queue, nothing to do");
+    return;
+  }
+
+  console.log(`[Agent] Found ${initialMessages.length} initial message(s) in queue`);
 
   // Report start
   await reporter.report({
@@ -90,19 +99,22 @@ export async function runAgent(env: Env): Promise<void> {
     await execAsync(`git remote set-url origin "${repoUrl}"`, { cwd: env.WORKSPACE });
     console.log(`[Agent] Updated origin remote with fresh credentials`);
 
-    // Set mission creator for co-author tracking
+    // Set mission creator from first message sender
+    const firstMessage = initialMessages[0];
     setMissionCreator({
-      id: env.PROMPT_SENDER_ID, // On first run, sender is the creator
-      name: env.GIT_AUTHOR_NAME,
-      email: env.GIT_AUTHOR_EMAIL,
+      id: firstMessage.senderId,
+      name: firstMessage.senderName,
+      email: "", // Email not available from queue
     });
 
-    // Track prompt sender as contributor (excluded if same as mission creator)
-    addContributor({
-      id: env.PROMPT_SENDER_ID,
-      name: env.PROMPT_SENDER_NAME,
-      email: env.PROMPT_SENDER_EMAIL,
-    });
+    // Track all message senders as contributors
+    for (const msg of initialMessages) {
+      addContributor({
+        id: msg.senderId,
+        name: msg.senderName,
+        email: "",
+      });
+    }
     // Set up auth storage with the provided API key
     const authStorage = discoverAuthStorage();
     authStorage.setRuntimeApiKey(provider, env.LLM_API_KEY);
@@ -252,25 +264,42 @@ export async function runAgent(env: Env): Promise<void> {
       }
     });
 
-    // Run the initial prompt with sender attribution
-    const promptWithSender = `[${env.PROMPT_SENDER_NAME}]: ${env.PROMPT}`;
-    await session.prompt(promptWithSender);
+    // Combine all initial messages into one prompt
+    // These are messages that were queued during sandbox setup (configuring state)
+    const combinedPrompt = initialMessages
+      .map(msg => `[${msg.senderName}]: ${msg.text}`)
+      .join("\n\n");
+    
+    console.log(`[Agent] Running combined initial prompt (${initialMessages.length} messages)`);
+    
+    // Mark all initial messages as delivered
+    for (const msg of initialMessages) {
+      await queueClient.markDelivered(msg.id);
+    }
+
+    // Run the combined prompt
+    await session.prompt(combinedPrompt);
 
     // Wait for agent to finish initial prompt
     await session.agent.waitForIdle();
 
-    // Poll for queued messages and process them
+    // Mark all initial messages as processed
+    for (const msg of initialMessages) {
+      await queueClient.markProcessed(msg.id);
+    }
+
+    // Poll for any new messages that arrived while we were processing
     let continuePolling = true;
     while (continuePolling) {
       const queuedMessages = await queueClient.fetchPendingMessages();
       
       if (queuedMessages.length === 0) {
-        console.log("[Agent] No queued messages, finishing");
+        console.log("[Agent] No more queued messages, finishing");
         continuePolling = false;
         break;
       }
 
-      console.log(`[Agent] Found ${queuedMessages.length} queued message(s)`);
+      console.log(`[Agent] Found ${queuedMessages.length} new queued message(s)`);
 
       for (const msg of queuedMessages) {
         // Mark as delivered
@@ -280,7 +309,7 @@ export async function runAgent(env: Env): Promise<void> {
         addContributor({
           id: msg.senderId,
           name: msg.senderName,
-          email: "", // Email not available from queue, but ID is sufficient for dedup
+          email: "",
         });
 
         // Format message with sender attribution
@@ -290,12 +319,10 @@ export async function runAgent(env: Env): Promise<void> {
 
         if (msg.behavior === "steer") {
           // Interrupt: use steer() to deliver after current tool completes
-          // This is used when the agent might still be mid-turn
           if (session.isStreaming) {
             console.log("[Agent] Using steer() - agent is streaming");
             await session.steer(formattedMessage);
           } else {
-            // Agent is idle, just use regular prompt
             console.log("[Agent] Using prompt() - agent is idle");
             await session.prompt(formattedMessage);
           }
