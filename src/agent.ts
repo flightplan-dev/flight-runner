@@ -288,15 +288,14 @@ export async function runAgent(env: Env): Promise<void> {
       await queueClient.markProcessed(msg.id);
     }
 
-    // Poll for any new messages that arrived while we were processing
-    let continuePolling = true;
 
-    while (continuePolling) {
+    const processedMessageIds: string[] = [];
+
+    while (true) {
       const queuedMessages = await queueClient.fetchPendingMessages();
 
       if (queuedMessages.length === 0) {
         await reporter.sendSystemMessage("No more queued messages, finishing");
-        continuePolling = false;
         break;
       }
 
@@ -320,30 +319,21 @@ export async function runAgent(env: Env): Promise<void> {
 
         await reporter.sendSystemMessage(`Processing queued message (${msg.behavior}): ${msg.text.slice(0, 100)}...`);
 
-        if (msg.behavior === "steer") {
-          // Interrupt: use steer() to deliver after current tool completes
-          if (session.isStreaming) {
-            await reporter.sendSystemMessage("Using steer() - agent is streaming");
-            await session.steer(formattedMessage);
-          } else {
-            await reporter.sendSystemMessage("Using prompt() - agent is idle");
-            await session.prompt(formattedMessage);
-          }
-        } else {
-          // followUp: agent is idle at this point, use regular prompt
-          await reporter.sendSystemMessage("Using prompt() for followUp message");
-          await session.prompt(formattedMessage);
-        }
+        await session.prompt(formattedMessage, {
+          streamingBehavior: msg.behavior === "steer" ? "steer" : "followUp",
+        });
+
+        await reporter.sendSystemMessage(`Finished processing message ${msg.id}`);
 
         processedMessageIds.push(msg.id);
       }
     }
 
 
-    for (const msg of initialMessages) {
+    for (const id of processedMessageIds) {
       // Mark as processed
-      await queueClient.markProcessed(msg.id);
-      await reporter.sendSystemMessage(`Processed message ${msg.id}`);
+      await queueClient.markProcessed(id);
+      await reporter.sendSystemMessage(`Processed message ${id}`);
     }
 
     await session.agent.waitForIdle();
