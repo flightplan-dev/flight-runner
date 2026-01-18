@@ -94,8 +94,18 @@ async function installPostgres(version: string, extensions?: string[]): Promise<
   const os = await detectOS();
 
   if (os === "debian" || os === "ubuntu") {
-    // Debian/Ubuntu
+    // Debian/Ubuntu - need to add PostgreSQL APT repository for recent versions
     await runCommand("apt-get update");
+    await runCommand("apt-get install -y curl ca-certificates gnupg");
+    
+    // Add PostgreSQL APT repository
+    console.log("[services] Adding PostgreSQL APT repository...");
+    await runCommand("install -d /usr/share/postgresql-common/pgdg");
+    await runCommand("curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc");
+    await runCommand(`sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'`);
+    await runCommand("apt-get update");
+    
+    // Install PostgreSQL
     await runCommand(`apt-get install -y postgresql-${majorVersion} postgresql-contrib-${majorVersion}`);
     
     // Install extension packages
