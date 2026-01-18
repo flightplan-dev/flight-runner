@@ -160,6 +160,19 @@ export async function runAgent(env: Env): Promise<void> {
       promptTemplates: [],
     });
 
+
+    // Start file-based abort watcher
+    // Gateway triggers abort by POSTing to sprites.dev exec API:
+    //   POST /api/sprites/exec { "command": "touch /tmp/flightplan-abort" }
+    const abortWatcher = new AbortWatcher();
+
+    abortWatcher.start(async () => {
+      await reporter.sendSystemMessage("Abort requested, stopping agent...", "warn");
+      await session.abort();
+      await reporter.sendSystemMessage("Agent aborted");
+    });
+
+
     // Track message content for message:end event
     let currentMessageId: string | undefined;
     let currentMessageContent = "";
@@ -278,28 +291,18 @@ export async function runAgent(env: Env): Promise<void> {
       await queueClient.markDelivered(msg.id);
     }
 
-    // Start file-based abort watcher BEFORE running prompts
-    // Gateway triggers abort by running: touch /tmp/flightplan-abort
-    const abortWatcher = new AbortWatcher();
-    abortWatcher.start(() => {
-      // Fire-and-forget async operations
-      reporter.sendSystemMessage("Abort requested, stopping agent...", "warn");
-      session.abort().then(() => {
-        reporter.sendSystemMessage("Agent aborted");
-      });
-    });
+    // Run the combined prompt
+    await session.prompt(combinedPrompt);
+
+    // Wait for agent to finish initial prompt
+    await session.agent.waitForIdle();
+
+    // Mark all initial messages as processed
+    for (const msg of initialMessages) {
+      await queueClient.markProcessed(msg.id);
+    }
 
     try {
-      // Run the combined prompt
-      await session.prompt(combinedPrompt);
-
-      // Wait for agent to finish initial prompt
-      await session.agent.waitForIdle();
-
-      // Mark all initial messages as processed
-      for (const msg of initialMessages) {
-        await queueClient.markProcessed(msg.id);
-      }
       const processedMessageIds: string[] = [];
 
       while (!abortWatcher.wasAborted) {
@@ -314,7 +317,7 @@ export async function runAgent(env: Env): Promise<void> {
 
         for (const msg of queuedMessages) {
           if (abortWatcher.wasAborted) break;
-          
+
           // Mark as delivered
           await queueClient.markDelivered(msg.id);
 
