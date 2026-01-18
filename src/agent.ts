@@ -66,7 +66,7 @@ export async function runAgent(env: Env): Promise<void> {
   const { provider, modelId } = resolveModel(env.MODEL);
 
   await reporter.sendSystemMessage(`Starting with model: ${provider}/${modelId}`);
-  await reporter.sendSystemMessage(`Workspace: ${env.WORKSPACE}`);
+  await reporter.sendSystemMessage(`Workspace: ${env.WORKSPACE}`, "debug");
 
   // Fetch initial messages from queue (includes initial prompt + any follow-ups during setup)
   const initialMessages = await queueClient.fetchPendingMessages();
@@ -76,7 +76,7 @@ export async function runAgent(env: Env): Promise<void> {
     return;
   }
 
-  await reporter.sendSystemMessage(`Found ${initialMessages.length} initial message(s) in queue`);
+  await reporter.sendSystemMessage(`Found ${initialMessages.length} initial message(s) in queue`, "debug");
 
   // Report start
   await reporter.report({
@@ -97,7 +97,7 @@ export async function runAgent(env: Env): Promise<void> {
 
     // Update origin remote URL with fresh token (handles checkpointed sprites with stale tokens)
     await execAsync(`git remote set-url origin "${repoUrl}"`, { cwd: env.WORKSPACE });
-    await reporter.sendSystemMessage("Updated origin remote with fresh credentials");
+    await reporter.sendSystemMessage("Updated origin remote with fresh credentials", "debug");
 
     // Set mission creator from first message sender
     const firstMessage = initialMessages[0];
@@ -270,7 +270,7 @@ export async function runAgent(env: Env): Promise<void> {
       .map(msg => `[${msg.senderName}]: ${msg.text}`)
       .join("\n\n");
 
-    await reporter.sendSystemMessage(`Running combined initial prompt (${initialMessages.length} messages)`);
+    await reporter.sendSystemMessage(`Running combined initial prompt (${initialMessages.length} messages)`, "debug");
 
     // Mark all initial messages as delivered
     for (const msg of initialMessages) {
@@ -295,11 +295,11 @@ export async function runAgent(env: Env): Promise<void> {
       const queuedMessages = await queueClient.fetchPendingMessages();
 
       if (queuedMessages.length === 0) {
-        await reporter.sendSystemMessage("No more queued messages, finishing");
+        await reporter.sendSystemMessage("No more queued messages, finishing", "debug");
         break;
       }
 
-      await reporter.sendSystemMessage(`Found ${queuedMessages.length} new queued message(s)`);
+      await reporter.sendSystemMessage(`Found ${queuedMessages.length} new queued message(s)`, "debug");
 
       const processedMessageIds: string[] = [];
 
@@ -323,7 +323,7 @@ export async function runAgent(env: Env): Promise<void> {
           streamingBehavior: msg.behavior === "steer" ? "steer" : "followUp",
         });
 
-        await reporter.sendSystemMessage(`Finished processing message ${msg.id}`);
+        await reporter.sendSystemMessage(`Finished processing message ${msg.id}`, "debug");
 
         processedMessageIds.push(msg.id);
       }
@@ -333,7 +333,7 @@ export async function runAgent(env: Env): Promise<void> {
     for (const id of processedMessageIds) {
       // Mark as processed
       await queueClient.markProcessed(id);
-      await reporter.sendSystemMessage(`Processed message ${id}`);
+      await reporter.sendSystemMessage(`Processed message ${id}`, "debug");
     }
 
     await session.agent.waitForIdle();
