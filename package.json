@@ -6,12 +6,15 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "flight-runner": "dist/index.js"
+    "flight-runner": "dist/index.js",
+    "flightplan-setup": "dist/setup/index.js",
+    "flightplan-wait": "dist/setup/wait.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
-    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "start": "node dist/index.js",
+    "setup": "node dist/setup/index.js",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },

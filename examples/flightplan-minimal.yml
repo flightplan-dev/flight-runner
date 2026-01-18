@@ -1,8 +1,6 @@
 # flightplan.yml - Minimal example
-# For simple projects that just need basic setup and test commands
+# For simple projects with no external services
+# LLM figures out test commands, build steps, etc.
 
-hooks:
-  setup:
-    - npm install
-  test:
-    command: npm test
+setup:
+  - npm install

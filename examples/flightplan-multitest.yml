@@ -1,0 +1,27 @@
+# flightplan.yml - Project with multiple test suites
+# Example: app with both mocha (integration) and vitest (unit)
+
+services:
+  - postgres:16
+
+env:
+  from_file: .env.example
+  set:
+    NODE_ENV: test
+    DATABASE_URL: ${POSTGRES_URL}
+
+setup:
+  - yarn install
+  - yarn prisma generate
+  - yarn prisma migrate deploy
+
+dev_server:
+  command: yarn dev
+  port: 3000
+
+# Help LLM understand the test setup
+hints:
+  - "Unit tests (vitest): yarn test:unit - fast, no DB needed"
+  - "Integration tests (mocha): yarn test:integration - in /tests/integration, requires DB"
+  - "Run yarn build before integration tests"
+  - "CI runs both: yarn test (runs unit then integration)"

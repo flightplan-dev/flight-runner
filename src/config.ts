@@ -2,13 +2,15 @@
  * Flightplan Config Parser
  *
  * Parses and validates flightplan.yml configuration files.
- * Also handles auto-detection of common project patterns as fallback.
+ * Focuses on infrastructure (services, env) that the LLM can't discover on its own.
+ * Test commands, build steps, etc. are left for the LLM to figure out.
  */
 
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
 import { readFile, access } from "fs/promises";
 import { join } from "path";
+import * as net from "net";
 
 // =============================================================================
 // Schema Definition
@@ -25,89 +27,70 @@ const ServiceSchema = z.string().refine(
 );
 
 /**
- * Environment variable definition.
+ * Environment variable value.
  * Can be static values or interpolations:
  * - Static: "test"
  * - From service: "${POSTGRES_URL}"
- * - From secrets: "${secrets.API_KEY}"
- * 
+ *
  * Note: YAML may parse numbers/booleans, so we coerce to string.
  */
-const EnvValueSchema = z.union([z.string(), z.number(), z.boolean()]).transform(String);
+const EnvValueSchema = z
+  .union([z.string(), z.number(), z.boolean()])
+  .transform(String);
 
 /**
- * Test command configuration.
- * Can be a simple string or detailed config.
+ * Environment configuration.
+ * Handles env files, secrets, and static values.
  */
-const TestCommandSchema = z.union([
-  z.string(), // Simple: "npm test"
-  z.object({
-    command: z.string(),
-    timeout: z.number().optional().default(300), // seconds
-    retry: z.number().optional().default(0),
-  }),
-]);
+const EnvConfigSchema = z.object({
+  // Copy an env file as base (e.g., .env.example → .env)
+  from_file: z.string().optional(),
 
-/**
- * Dev server readiness check configuration.
- * Used to determine when the server is ready to accept requests.
- */
-const ReadyCheckSchema = z.object({
-  // URL path to poll (e.g., "/health", "/api/ready")
-  path: z.string().default("/"),
-  // Expected HTTP status code (default 200)
-  status: z.number().default(200),
-  // How often to poll in milliseconds
-  interval: z.number().default(1000),
+  // Secrets to pull from Gateway (org-level secrets)
+  secrets: z.array(z.string()).optional(),
+
+  // Static env vars or interpolations
+  set: z.record(z.string(), EnvValueSchema).optional(),
 });
 
 /**
- * Dev server configuration for browser-based debugging.
- * 
- * Readiness detection (in order of precedence):
- * 1. wait_for - Watch stdout for a specific string (most reliable)
- * 2. ready_check - Poll an HTTP endpoint until it returns expected status
- * 3. Neither - Just wait for `timeout` seconds and hope for the best
+ * Dev server configuration.
+ * Runs as a background process before the LLM agent starts.
+ * Readiness is determined by port being open.
  */
 const DevServerSchema = z.object({
   command: z.string(),
   port: z.number().min(1).max(65535),
-  // Watch stdout for this string to determine readiness
-  wait_for: z.string().optional(),
-  // Poll an HTTP endpoint to determine readiness
-  ready_check: ReadyCheckSchema.optional(),
-  // Max seconds to wait for startup (default 60)
+  // Max seconds to wait for port to open (default 60)
   timeout: z.number().optional().default(60),
 });
 
 /**
- * Lifecycle hooks - commands run at specific events.
- */
-const HooksSchema = z.object({
-  setup: z.array(z.string()).optional(), // After cloning
-  pre_test: z.array(z.string()).optional(), // Before each test run
-  test: TestCommandSchema.optional(), // How to run tests
-  post_merge: z.array(z.string()).optional(), // After PR merged
-});
-
-/**
  * Complete flightplan.yml configuration.
+ *
+ * Philosophy:
+ * - Explicit: Infrastructure the LLM can't discover (services, env, ports)
+ * - Implicit: Commands the LLM can figure out (test, build, etc.)
  */
 export const FlightplanConfigSchema = z.object({
-  // Services the app depends on
+  // Services to spin up (postgres, redis, etc.)
   services: z.array(ServiceSchema).optional(),
 
-  // Environment variables
-  env: z.record(z.string(), EnvValueSchema).optional(),
+  // Environment configuration
+  env: EnvConfigSchema.optional(),
 
-  // Lifecycle hooks
-  hooks: HooksSchema.optional(),
+  // Setup commands run BEFORE dev server starts (ordered)
+  // These are explicit because order matters and some aren't discoverable
+  setup: z.array(z.string()).optional(),
 
   // Dev server configuration
   dev_server: DevServerSchema.optional(),
 
-  // File patterns to ignore in agent context
-  ignore: z.array(z.string()).optional(),
+  // Optional: point LLM to docs for conventions, test commands, etc.
+  docs: z.string().optional(),
+
+  // Optional: inline hints for the LLM (natural language)
+  hints: z.array(z.string()).optional(),
 });
 
 export type FlightplanConfig = z.infer<typeof FlightplanConfigSchema>;
@@ -118,14 +101,17 @@ export type FlightplanConfig = z.infer<typeof FlightplanConfigSchema>;
 
 export interface ServiceInfo {
   name: string;
-  version: string | null;
-  envVars: Record<string, string>; // Environment vars this service provides
+  version: string;
+  envVar: string; // Environment variable this service provides (e.g., POSTGRES_URL)
 }
 
 /**
- * Known services and their default environment variable mappings.
+ * Known services and their default configurations.
  */
-const SERVICE_DEFINITIONS: Record<string, { envVar: string; defaultVersion: string }> = {
+const SERVICE_DEFINITIONS: Record<
+  string,
+  { envVar: string; defaultVersion: string }
+> = {
   postgres: { envVar: "POSTGRES_URL", defaultVersion: "16" },
   postgresql: { envVar: "POSTGRES_URL", defaultVersion: "16" },
   mysql: { envVar: "MYSQL_URL", defaultVersion: "8" },
@@ -145,18 +131,15 @@ export function parseService(service: string): ServiceInfo {
   const version = parts[1] || null;
 
   const definition = SERVICE_DEFINITIONS[name];
-  const envVars: Record<string, string> = {};
 
-  if (definition) {
-    // Service will inject its URL as this env var
-    // Actual URL is determined by the sandbox orchestrator
-    envVars[definition.envVar] = `{{${name.toUpperCase()}_URL}}`;
+  if (!definition) {
+    throw new Error(`Unknown service: ${name}`);
   }
 
   return {
     name,
-    version: version || definition?.defaultVersion || null,
-    envVars,
+    version: version || definition.defaultVersion,
+    envVar: definition.envVar,
   };
 }
 
@@ -165,15 +148,15 @@ export function parseService(service: string): ServiceInfo {
 // =============================================================================
 
 export interface InterpolationContext {
-  services: Record<string, string>; // Service env vars (e.g., POSTGRES_URL)
-  secrets: Record<string, string>; // Organization secrets
+  // Service URLs (e.g., { POSTGRES_URL: "postgres://..." })
+  services: Record<string, string>;
+  // Organization secrets from Gateway
+  secrets: Record<string, string>;
 }
 
 /**
  * Interpolate environment variable values.
- * Supports:
- * - ${SERVICE_VAR} - from services
- * - ${secrets.KEY} - from org secrets
+ * Supports: ${VAR_NAME} for services, ${secrets.KEY} for org secrets
  */
 export function interpolateEnvValue(
   value: string,
@@ -187,7 +170,7 @@ export function interpolateEnvValue(
         return context.secrets[key];
       }
       console.warn(`[Config] Secret not found: ${key}`);
-      return match; // Keep original if not found
+      return match;
     }
 
     // Handle service env vars (e.g., POSTGRES_URL)
@@ -201,142 +184,51 @@ export function interpolateEnvValue(
 }
 
 // =============================================================================
-// Auto-Detection (Fallback)
-// =============================================================================
-
-export interface DetectedSetup {
-  packageManager: "npm" | "yarn" | "pnpm" | "bun" | null;
-  installCommand: string | null;
-  testCommand: string | null;
-  devCommand: string | null;
-  language: "javascript" | "typescript" | "python" | "ruby" | "go" | "rust" | null;
-}
-
-/**
- * Auto-detect project setup from common patterns.
- * Used as fallback when no flightplan.yml exists.
- */
-export async function detectProjectSetup(workspacePath: string): Promise<DetectedSetup> {
-  const result: DetectedSetup = {
-    packageManager: null,
-    installCommand: null,
-    testCommand: null,
-    devCommand: null,
-    language: null,
-  };
-
-  // Check for Node.js projects
-  const hasPackageJson = await fileExists(join(workspacePath, "package.json"));
-  if (hasPackageJson) {
-    result.language = "javascript";
-
-    // Detect package manager
-    const hasYarnLock = await fileExists(join(workspacePath, "yarn.lock"));
-    const hasPnpmLock = await fileExists(join(workspacePath, "pnpm-lock.yaml"));
-    const hasBunLock = await fileExists(join(workspacePath, "bun.lockb"));
-
-    if (hasBunLock) {
-      result.packageManager = "bun";
-      result.installCommand = "bun install";
-    } else if (hasPnpmLock) {
-      result.packageManager = "pnpm";
-      result.installCommand = "pnpm install";
-    } else if (hasYarnLock) {
-      result.packageManager = "yarn";
-      result.installCommand = "yarn install";
-    } else {
-      result.packageManager = "npm";
-      result.installCommand = "npm install";
-    }
-
-    // Try to detect scripts from package.json
-    try {
-      const pkgJson = JSON.parse(await readFile(join(workspacePath, "package.json"), "utf-8"));
-      const scripts = pkgJson.scripts || {};
-
-      if (scripts.test) {
-        result.testCommand = `${result.packageManager} test`;
-      }
-      if (scripts.dev) {
-        result.devCommand = `${result.packageManager} run dev`;
-      } else if (scripts.start) {
-        result.devCommand = `${result.packageManager} start`;
-      }
-
-      // Check if TypeScript
-      if (pkgJson.devDependencies?.typescript || pkgJson.dependencies?.typescript) {
-        result.language = "typescript";
-      }
-    } catch {
-      // Ignore parse errors
-    }
-  }
-
-  // Check for Python projects
-  const hasRequirementsTxt = await fileExists(join(workspacePath, "requirements.txt"));
-  const hasPyproject = await fileExists(join(workspacePath, "pyproject.toml"));
-  if (hasRequirementsTxt || hasPyproject) {
-    result.language = "python";
-    if (hasPyproject) {
-      result.installCommand = "pip install -e .";
-    } else {
-      result.installCommand = "pip install -r requirements.txt";
-    }
-    result.testCommand = "pytest";
-  }
-
-  // Check for Ruby projects
-  const hasGemfile = await fileExists(join(workspacePath, "Gemfile"));
-  if (hasGemfile) {
-    result.language = "ruby";
-    result.installCommand = "bundle install";
-    result.testCommand = "bundle exec rspec";
-  }
-
-  // Check for Go projects
-  const hasGoMod = await fileExists(join(workspacePath, "go.mod"));
-  if (hasGoMod) {
-    result.language = "go";
-    result.installCommand = "go mod download";
-    result.testCommand = "go test ./...";
-  }
-
-  // Check for Rust projects
-  const hasCargoToml = await fileExists(join(workspacePath, "Cargo.toml"));
-  if (hasCargoToml) {
-    result.language = "rust";
-    result.installCommand = "cargo build";
-    result.testCommand = "cargo test";
-  }
-
-  return result;
-}
-
-// =============================================================================
 // Config Loading
 // =============================================================================
 
 export interface LoadedConfig {
   config: FlightplanConfig;
-  source: "flightplan.yml" | "auto-detected";
+  source: "env" | "flightplan.yml" | "none";
   services: ServiceInfo[];
   resolvedEnv: Record<string, string>;
 }
 
 /**
- * Load configuration from flightplan.yml or auto-detect.
+ * Load configuration from flightplan.yml.
+ * Returns minimal config if no file exists (LLM figures out the rest).
  */
 export async function loadConfig(
   workspacePath: string,
   context: InterpolationContext = { services: {}, secrets: {} }
 ): Promise<LoadedConfig> {
-  const configPath = join(workspacePath, "flightplan.yml");
+  // Priority:
+  // 1. FLIGHTPLAN_CONFIG env var (YAML string from Gateway)
+  // 2. flightplan.yml in workspace
+  // 3. No config (LLM figures it out)
 
-  // Try to load flightplan.yml
-  if (await fileExists(configPath)) {
-    console.log("[Config] Found flightplan.yml");
+  let content: string | null = null;
+  let source: "env" | "flightplan.yml" | "none" = "none";
 
-    const content = await readFile(configPath, "utf-8");
+  // Check for config from environment (Gateway-provided)
+  if (process.env.FLIGHTPLAN_CONFIG) {
+    console.log("[Config] Using FLIGHTPLAN_CONFIG from environment");
+    content = process.env.FLIGHTPLAN_CONFIG;
+    source = "env";
+  }
+
+  // Fall back to flightplan.yml in workspace
+  if (!content) {
+    const configPath = join(workspacePath, "flightplan.yml");
+    if (await fileExists(configPath)) {
+      console.log("[Config] Found flightplan.yml");
+      content = await readFile(configPath, "utf-8");
+      source = "flightplan.yml";
+    }
+  }
+
+  // Parse config if we have content
+  if (content) {
     const rawConfig = parseYaml(content);
     const parseResult = FlightplanConfigSchema.safeParse(rawConfig);
 
@@ -353,51 +245,49 @@ export async function loadConfig(
     // Parse services
     const services = (config.services || []).map(parseService);
 
-    // Build service env context
+    // Build service env context for interpolation
     const serviceEnvContext = { ...context.services };
     for (const service of services) {
-      Object.assign(serviceEnvContext, service.envVars);
+      // Only set placeholder if not already provided in context
+      if (!(service.envVar in serviceEnvContext)) {
+        serviceEnvContext[service.envVar] = `{{${service.name.toUpperCase()}_URL}}`;
+      }
     }
 
     // Resolve environment variables
     const resolvedEnv: Record<string, string> = {};
-    for (const [key, value] of Object.entries(config.env || {})) {
+
+    // Start with values from set
+    for (const [key, value] of Object.entries(config.env?.set || {})) {
       resolvedEnv[key] = interpolateEnvValue(value, {
         services: serviceEnvContext,
         secrets: context.secrets,
       });
     }
 
+    // Add secrets (if requested)
+    for (const secretKey of config.env?.secrets || []) {
+      if (secretKey in context.secrets) {
+        resolvedEnv[secretKey] = context.secrets[secretKey];
+      } else {
+        console.warn(`[Config] Requested secret not provided: ${secretKey}`);
+      }
+    }
+
     return {
       config,
-      source: "flightplan.yml",
+      source,
       services,
       resolvedEnv,
     };
   }
 
-  // Fall back to auto-detection
-  console.log("[Config] No flightplan.yml found, auto-detecting project setup");
-
-  const detected = await detectProjectSetup(workspacePath);
-  console.log("[Config] Auto-detected:", detected);
-
-  // Build a synthetic config from auto-detection
-  const config: FlightplanConfig = {
-    hooks: {},
-  };
-
-  if (detected.installCommand) {
-    config.hooks!.setup = [detected.installCommand];
-  }
-
-  if (detected.testCommand) {
-    config.hooks!.test = detected.testCommand;
-  }
+  // No config - return empty config, LLM figures it out
+  console.log("[Config] No config found, LLM will discover project setup");
 
   return {
-    config,
-    source: "auto-detected",
+    config: {},
+    source: "none",
     services: [],
     resolvedEnv: {},
   };
@@ -416,115 +306,101 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-// =============================================================================
-// Test Command Helpers
-// =============================================================================
-
-export interface TestConfig {
-  command: string;
-  timeout: number;
-  retry: number;
-}
-
 /**
- * Normalize test configuration to a standard format.
- */
-export function getTestConfig(config: FlightplanConfig): TestConfig | null {
-  const test = config.hooks?.test;
-
-  if (!test) {
-    return null;
-  }
-
-  if (typeof test === "string") {
-    return {
-      command: test,
-      timeout: 300,
-      retry: 0,
-    };
-  }
-
-  return {
-    command: test.command,
-    timeout: test.timeout ?? 300,
-    retry: test.retry ?? 0,
-  };
-}
-
-/**
- * Get the setup commands from config.
+ * Get setup commands from config.
  */
 export function getSetupCommands(config: FlightplanConfig): string[] {
-  return config.hooks?.setup || [];
-}
-
-/**
- * Get the pre-test commands from config.
- */
-export function getPreTestCommands(config: FlightplanConfig): string[] {
-  return config.hooks?.pre_test || [];
+  return config.setup || [];
 }
 
 /**
  * Get dev server config if defined.
  */
-export function getDevServerConfig(config: FlightplanConfig): FlightplanConfig["dev_server"] {
-  return config.dev_server;
-}
-
-/**
- * Get ignore patterns for agent context.
- */
-export function getIgnorePatterns(config: FlightplanConfig): string[] {
-  // Default patterns always ignored
-  const defaults = ["node_modules/", ".git/", "dist/", "build/", "*.log"];
-
-  const custom = config.ignore || [];
-
-  // Dedupe
-  return Array.from(new Set([...defaults, ...custom]));
-}
-
-// =============================================================================
-// Dev Server Helpers
-// =============================================================================
-
-export interface DevServerConfig {
-  command: string;
-  port: number;
-  timeout: number;
-  readiness: 
-    | { type: "wait_for"; pattern: string }
-    | { type: "ready_check"; path: string; status: number; interval: number }
-    | { type: "timeout" }; // Just wait for timeout
-}
-
-/**
- * Get normalized dev server configuration with readiness strategy.
- */
-export function getDevServer(config: FlightplanConfig): DevServerConfig | null {
-  const ds = config.dev_server;
-  if (!ds) return null;
-
-  let readiness: DevServerConfig["readiness"];
-
-  if (ds.wait_for) {
-    readiness = { type: "wait_for", pattern: ds.wait_for };
-  } else if (ds.ready_check) {
-    readiness = {
-      type: "ready_check",
-      path: ds.ready_check.path,
-      status: ds.ready_check.status,
-      interval: ds.ready_check.interval,
-    };
-  } else {
-    readiness = { type: "timeout" };
-  }
+export function getDevServerConfig(
+  config: FlightplanConfig
+): { command: string; port: number; timeout: number } | null {
+  if (!config.dev_server) return null;
 
   return {
-    command: ds.command,
-    port: ds.port,
-    timeout: ds.timeout ?? 60,
-    readiness,
+    command: config.dev_server.command,
+    port: config.dev_server.port,
+    timeout: config.dev_server.timeout ?? 60,
   };
+}
+
+/**
+ * Get the docs file path (for LLM to read).
+ */
+export function getDocsPath(config: FlightplanConfig): string | null {
+  return config.docs || null;
+}
+
+/**
+ * Get hints for the LLM.
+ */
+export function getHints(config: FlightplanConfig): string[] {
+  return config.hints || [];
+}
+
+/**
+ * Get the env file to copy (e.g., .env.example).
+ */
+export function getEnvFromFile(config: FlightplanConfig): string | null {
+  return config.env?.from_file || null;
+}
+
+// =============================================================================
+// Dev Server Management
+// =============================================================================
+
+/**
+ * Wait for a port to be open (accepting connections).
+ */
+export async function waitForPort(
+  port: number,
+  timeoutMs: number = 60000
+): Promise<void> {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      await checkPort(port);
+      console.log(`[Config] Port ${port} is ready`);
+      return;
+    } catch {
+      // Port not ready yet, wait and retry
+      await sleep(500);
+    }
+  }
+
+  throw new Error(`Port ${port} not ready after ${timeoutMs}ms`);
+}
+
+/**
+ * Check if a port is accepting connections.
+ */
+function checkPort(port: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ port, host: "localhost" });
+
+    socket.on("connect", () => {
+      socket.destroy();
+      resolve();
+    });
+
+    socket.on("error", (err) => {
+      socket.destroy();
+      reject(err);
+    });
+
+    // Timeout for individual connection attempt
+    socket.setTimeout(1000, () => {
+      socket.destroy();
+      reject(new Error("Connection timeout"));
+    });
+  });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

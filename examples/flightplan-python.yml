@@ -5,33 +5,23 @@ services:
   - redis:7
 
 env:
-  DJANGO_SETTINGS_MODULE: myapp.settings.test
-  DATABASE_URL: "${POSTGRES_URL}"
-  REDIS_URL: "${REDIS_URL}"
-  SECRET_KEY: "${secrets.DJANGO_SECRET_KEY}"
+  secrets:
+    - DJANGO_SECRET_KEY
+  set:
+    DJANGO_SETTINGS_MODULE: myapp.settings.development
+    DATABASE_URL: ${POSTGRES_URL}
+    REDIS_URL: ${REDIS_URL}
 
-hooks:
-  setup:
-    - pip install -r requirements.txt
-    - python manage.py migrate
-
-  pre_test:
-    - python manage.py flush --no-input
-
-  test:
-    command: pytest -v --tb=short
-    timeout: 600
+setup:
+  - pip install -r requirements.txt
+  - python manage.py migrate
 
 dev_server:
   command: python manage.py runserver 0.0.0.0:8000
   port: 8000
-  wait_for: "Starting development server at"
-  timeout: 60
 
-ignore:
-  - __pycache__/
-  - .git/
-  - .venv/
-  - "*.pyc"
-  - .coverage
-  - htmlcov/
+# Inline hints for LLM (when no CONTRIBUTING.md exists)
+hints:
+  - "Unit tests use pytest: pytest tests/unit"
+  - "Integration tests need DB: pytest tests/integration"
+  - "Always run migrations before tests"

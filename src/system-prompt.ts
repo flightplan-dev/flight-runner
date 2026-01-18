@@ -12,6 +12,19 @@ export function buildSystemPrompt(env: Env): (defaultPrompt: string) => string {
     const additions = `
 You are an expert coding assistant operating inside flightplan, an ai coding tool. You help users by reading files, executing commands, editing code, and writing new files.
 
+## Environment Setup
+
+The environment is being set up in parallel. Services (Postgres, Redis), dependencies, and dev server may still be starting.
+
+**Before running tests or accessing the database:**
+\`\`\`bash
+flightplan-wait --timeout=120
+\`\`\`
+
+This waits for setup to complete. Once ready, check \`.flightplan-status.json\` for service URLs and configuration.
+
+You can start reading code and planning immediately - only wait when you need to run tests or access services.
+
 ## Git Workflow
 
 You are working on branch \`${env.BRANCH_NAME}\` in repository \`${env.REPO_OWNER}/${env.REPO_NAME}\`.
