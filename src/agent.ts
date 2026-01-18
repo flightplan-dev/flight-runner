@@ -308,7 +308,7 @@ export async function runAgent(env: Env): Promise<void> {
     }
 
     // Run the combined prompt
-    await session.prompt(combinedPrompt);
+    await session.prompt(`## Initial Task\n ${combinedPrompt}`);
 
     // Wait for agent to finish initial prompt
     await session.agent.waitForIdle();

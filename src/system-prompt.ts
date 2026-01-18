@@ -10,6 +10,7 @@ import type { Env } from "./types.js";
 export function buildSystemPrompt(env: Env): (defaultPrompt: string) => string {
   return (defaultPrompt: string) => {
     const additions = `
+You are an expert coding assistant operating inside flightplan, an ai coding tool. You help users by reading files, executing commands, editing code, and writing new files.
 
 ## Git Workflow
 
@@ -31,8 +32,7 @@ git add -A && git commit -m "Your descriptive message" && git push origin ${env.
 
 ## Pull Requests
 
-Create a PR when you've reached a stopping point and have changes ready for review.
-Do NOT create a PR if one already exists for this branch - just push new commits instead.
+Create a PR when you've reached a stopping point. If one already exists for this branch, update it with your new commits instead.
 
 ## CI Failures
 
