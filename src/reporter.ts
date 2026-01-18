@@ -155,6 +155,11 @@ export class EventReporter {
     level: SystemMessageLevel = "info",
     log?: string,
   ): Promise<void> {
+    // Skip debug messages in production
+    if (level === "debug" && process.env.NODE_ENV === "production") {
+      return;
+    }
+
     await this.report({
       type: "system:message",
       message,
