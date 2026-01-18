@@ -43,15 +43,22 @@ import { startService, type ServiceInstance } from "./services.js";
 // =============================================================================
 
 interface SetupStatus {
+  /** Current status: running while in progress, ready on success, failed on error */
   status: "running" | "ready" | "failed";
+  /** ISO timestamp of last update */
   timestamp: string;
-  step?: string;  // Current step (for progress tracking)
+  /** Current step description (only while running) */
+  step?: string;
+  /** Started services */
   services: ServiceInstance[];
+  /** Dev server info (if configured) */
   devServer?: {
     port: number;
     pid?: number;
   };
+  /** Resolved environment variables */
   env: Record<string, string>;
+  /** Error message (only if status is "failed") */
   error?: string;
 }
 

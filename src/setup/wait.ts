@@ -18,11 +18,17 @@ import { readFile, access } from "fs/promises";
 import { join, resolve } from "path";
 
 interface SetupStatus {
+  /** Current status: running while in progress, ready on success, failed on error */
   status: "running" | "ready" | "failed";
+  /** Current step description (only while running) */
   step?: string;
+  /** Error message (only if status is "failed") */
   error?: string;
+  /** Started services */
   services: Array<{ name: string; url: string; port: number }>;
+  /** Dev server info (if configured) */
   devServer?: { port: number; pid?: number };
+  /** Resolved environment variables */
   env: Record<string, string>;
 }
 
