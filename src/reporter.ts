@@ -22,6 +22,7 @@ import type {
   SystemMessageLevel,
   PrCreatedEvent,
   PrStatusEvent,
+  SetupStatusEvent,
   Env,
 } from "./types.js";
 
@@ -39,7 +40,8 @@ type ReportableEvent =
   | Omit<SystemCompactionEvent, "timestamp" | "missionId">
   | Omit<SystemMessageEvent, "timestamp" | "missionId">
   | Omit<PrCreatedEvent, "timestamp" | "missionId">
-  | Omit<PrStatusEvent, "timestamp" | "missionId">;
+  | Omit<PrStatusEvent, "timestamp" | "missionId">
+  | Omit<SetupStatusEvent, "timestamp" | "missionId">;
 
 /**
  * Sign a payload with HMAC-SHA256

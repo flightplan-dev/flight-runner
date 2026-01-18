@@ -38,6 +38,7 @@ import {
   type InterpolationContext,
 } from "../config.js";
 import { startService, type ServiceInstance } from "./services.js";
+import { SetupEventSender } from "./event-sender.js";
 
 // =============================================================================
 // Logging
@@ -139,11 +140,22 @@ async function main(): Promise<void> {
     env: {},
   };
 
-  // Helper to update status file with current step
+  // Initialize event sender for reporting to Gateway
+  const eventSender = new SetupEventSender();
+
+  // Helper to update status file and send event to Gateway
   const updateStatus = async (step: string) => {
     status.step = step;
     status.timestamp = new Date().toISOString();
     await writeStatus(resolvedWorkspace, status).catch(() => {});
+    
+    // Send event to Gateway (non-blocking)
+    eventSender.sendStatus({
+      status: status.status as "running",
+      step,
+      services: status.services.map(s => ({ name: s.name, url: s.url, port: s.port })),
+      devServer: status.devServer,
+    }).catch(() => {}); // Don't fail setup if event sending fails
   };
 
   try {
@@ -262,6 +274,15 @@ async function main(): Promise<void> {
     status.step = undefined;
     await writeStatus(resolvedWorkspace, status);
 
+    // Send "ready" event to Gateway
+    // Note: devServerUrl is not included here - the Gateway will construct it
+    // based on the sprite name when it receives this event
+    await eventSender.sendStatus({
+      status: "ready",
+      services: status.services.map(s => ({ name: s.name, url: s.url, port: s.port })),
+      devServer: status.devServer,
+    });
+
     // Print summary
     printSummary(status);
 
@@ -297,6 +318,14 @@ async function main(): Promise<void> {
     status.status = "failed";
     status.error = errorMessage;
     await writeStatus(resolvedWorkspace, status).catch(() => {});
+
+    // Send "failed" event to Gateway
+    await eventSender.sendStatus({
+      status: "failed",
+      step: status.step,
+      error: errorMessage,
+      services: status.services.map(s => ({ name: s.name, url: s.url, port: s.port })),
+    }).catch(() => {});
 
     process.exit(1);
   }

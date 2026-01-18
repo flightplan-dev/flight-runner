@@ -48,7 +48,8 @@ export type AgentEventType =
   | "system:compaction"
   | "system:message"
   | "pr:created"
-  | "pr:status";
+  | "pr:status"
+  | "setup:status";
 
 export interface BaseEvent {
   type: AgentEventType;
@@ -155,6 +156,30 @@ export interface PrStatusEvent extends BaseEvent {
   prUrl?: string;
 }
 
+/** Service instance info from flightplan-setup */
+export interface ServiceInfo {
+  name: string;
+  url: string;
+  port: number;
+}
+
+/** Environment setup status sent to Gateway */
+export type SetupStatusType = "pending" | "running" | "ready" | "failed";
+
+export interface SetupStatusEvent extends BaseEvent {
+  type: "setup:status";
+  status: SetupStatusType;
+  step?: string;
+  error?: string;
+  services?: ServiceInfo[];
+  devServer?: {
+    port: number;
+    pid?: number;
+  };
+  /** Full Sprites URL for preview (e.g., https://mission-abc123-xyz.sprites.app) */
+  devServerUrl?: string;
+}
+
 export type AgentEvent =
   | AgentStartEvent
   | AgentEndEvent
@@ -168,4 +193,5 @@ export type AgentEvent =
   | SystemCompactionEvent
   | SystemMessageEvent
   | PrStatusEvent
-  | PrCreatedEvent;
+  | PrCreatedEvent
+  | SetupStatusEvent;
