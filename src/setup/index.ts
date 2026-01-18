@@ -26,7 +26,8 @@
  */
 
 import { spawn, ChildProcess } from "child_process";
-import { copyFile, readFile, writeFile, access } from "fs/promises";
+import { copyFile, readFile, writeFile, appendFile, access } from "fs/promises";
+import { createWriteStream, WriteStream } from "fs";
 import { join, resolve } from "path";
 import {
   loadConfig,
@@ -37,6 +38,32 @@ import {
   type InterpolationContext,
 } from "../config.js";
 import { startService, type ServiceInstance } from "./services.js";
+
+// =============================================================================
+// Logging
+// =============================================================================
+
+let logFile: WriteStream | null = null;
+const LOG_PATH = "/tmp/flightplan-setup.log";
+
+function initLog(): void {
+  logFile = createWriteStream(LOG_PATH, { flags: "w" });
+  log(`[setup] Log started at ${new Date().toISOString()}`);
+}
+
+function log(message: string): void {
+  console.log(message);
+  if (logFile) {
+    logFile.write(message + "\n");
+  }
+}
+
+function logError(message: string): void {
+  console.error(message);
+  if (logFile) {
+    logFile.write("[ERROR] " + message + "\n");
+  }
+}
 
 // =============================================================================
 // Types
@@ -73,18 +100,21 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  console.log("[setup] Starting flightplan-setup...");
+  // Initialize log file
+  initLog();
+
+  log("[setup] Starting flightplan-setup...");
 
   // Get workspace from arg or env
   const workspace = process.argv[2] || process.env.WORKSPACE;
   if (!workspace) {
-    console.error("[setup] Error: WORKSPACE is required");
-    console.error("[setup] Usage: flightplan-setup <workspace>");
+    logError("[setup] Error: WORKSPACE is required");
+    logError("[setup] Usage: flightplan-setup <workspace>");
     process.exit(1);
   }
 
   const resolvedWorkspace = resolve(workspace);
-  console.log(`[setup] Workspace: ${resolvedWorkspace}`);
+  log(`[setup] Workspace: ${resolvedWorkspace}`);
 
   const secretsJson = process.env.SECRETS_JSON;
   const keepAlive = process.env.KEEP_ALIVE === "true";
@@ -94,9 +124,9 @@ async function main(): Promise<void> {
   if (secretsJson) {
     try {
       secrets = JSON.parse(secretsJson);
-      console.log(`[setup] Loaded ${Object.keys(secrets).length} secrets`);
+      log(`[setup] Loaded ${Object.keys(secrets).length} secrets`);
     } catch (e) {
-      console.error("[setup] Failed to parse SECRETS_JSON:", e);
+      logError(`[setup] Failed to parse SECRETS_JSON: ${e}`);
       process.exit(1);
     }
   }
@@ -137,15 +167,15 @@ async function main(): Promise<void> {
     // Load config
     const { config, source, services } = await loadConfig(resolvedWorkspace, context);
 
-    console.log(`[setup] Config source: ${source}`);
+    log(`[setup] Config source: ${source}`);
 
     if (source === "none") {
-      console.log("[setup] No flightplan.yml found - running with defaults");
+      log("[setup] No flightplan.yml found - running with defaults");
     }
 
     // Step 1: Start services (install if needed)
     if (services.length > 0) {
-      console.log(`[setup] Starting ${services.length} service(s)...`);
+      log(`[setup] Starting ${services.length} service(s)...`);
 
       for (const serviceConfig of services) {
         await updateStatus(`installing ${serviceConfig.name}`);
@@ -189,7 +219,7 @@ async function main(): Promise<void> {
     // Step 4: Run setup commands
     const setupCommands = getSetupCommands(config);
     if (setupCommands.length > 0) {
-      console.log(`[setup] Running ${setupCommands.length} setup command(s)...`);
+      log(`[setup] Running ${setupCommands.length} setup command(s)...`);
       for (let i = 0; i < setupCommands.length; i++) {
         const cmd = setupCommands[i];
         await updateStatus(`setup command ${i + 1}/${setupCommands.length}`);
@@ -203,7 +233,7 @@ async function main(): Promise<void> {
 
     if (devServer) {
       await updateStatus("starting dev server");
-      console.log(`[setup] Starting dev server: ${devServer.command}`);
+      log(`[setup] Starting dev server: ${devServer.command}`);
       devServerProcess = startDevServer(devServer.command, resolvedWorkspace);
 
       status.devServer = {
@@ -213,9 +243,9 @@ async function main(): Promise<void> {
 
       // Step 6: Wait for port
       await updateStatus("waiting for dev server");
-      console.log(`[setup] Waiting for port ${devServer.port}...`);
+      log(`[setup] Waiting for port ${devServer.port}...`);
       await waitForPort(devServer.port, devServer.timeout * 1000);
-      console.log(`[setup] Dev server ready on port ${devServer.port}`);
+      log(`[setup] Dev server ready on port ${devServer.port}`);
     }
 
     // Mark as ready and write status
@@ -253,7 +283,7 @@ async function main(): Promise<void> {
     process.exit(0);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("[setup] ✗ Setup failed:", errorMessage);
+    logError(`[setup] ✗ Setup failed: ${errorMessage}`);
 
     status.status = "failed";
     status.error = errorMessage;
@@ -367,7 +397,7 @@ async function copyEnvFile(workspace: string, fromFile: string): Promise<void> {
     return;
   }
 
-  console.log(`[setup] Copying ${fromFile} → .env`);
+  log(`[setup] Copying ${fromFile} → .env`);
   await copyFile(source, dest);
 }
 
@@ -403,14 +433,14 @@ async function writeEnvVars(
 
   for (const [key, value] of Object.entries(vars)) {
     if (existingKeys.has(key)) {
-      console.log(`[setup] Skipping ${key} (already in .env)`);
+      log(`[setup] Skipping ${key} (already in .env)`);
       continue;
     }
     // Quote values with spaces or special chars
     const needsQuotes = /[\s"'$`\\]/.test(value);
     const quotedValue = needsQuotes ? `"${value.replace(/"/g, '\\"')}"` : value;
     lines.push(`${key}=${quotedValue}`);
-    console.log(`[setup] Set ${key}`);
+    log(`[setup] Set ${key}`);
   }
 
   if (lines.length > 1) {
@@ -424,16 +454,33 @@ async function writeEnvVars(
 // =============================================================================
 
 async function runCommand(command: string, cwd: string): Promise<void> {
-  console.log(`[setup] $ ${command}`);
+  log(`[setup] $ ${command}`);
+  log(`[setup]   cwd: ${cwd}`);
 
   return new Promise((resolve, reject) => {
     const child = spawn("bash", ["-c", command], {
       cwd,
-      stdio: "inherit",
       env: { ...process.env },
     });
 
+    child.stdout?.on("data", (data) => {
+      const output = data.toString();
+      process.stdout.write(output);
+      if (logFile) {
+        logFile.write(output);
+      }
+    });
+
+    child.stderr?.on("data", (data) => {
+      const output = data.toString();
+      process.stderr.write(output);
+      if (logFile) {
+        logFile.write("[stderr] " + output);
+      }
+    });
+
     child.on("close", (code) => {
+      log(`[setup]   exit code: ${code}`);
       if (code === 0) {
         resolve();
       } else {
@@ -441,7 +488,10 @@ async function runCommand(command: string, cwd: string): Promise<void> {
       }
     });
 
-    child.on("error", reject);
+    child.on("error", (err) => {
+      logError(`[setup]   error: ${err.message}`);
+      reject(err);
+    });
   });
 }
 
@@ -456,12 +506,12 @@ function startDevServer(command: string, cwd: string): ChildProcess {
   child.unref();
 
   child.on("error", (err) => {
-    console.error("[setup] Dev server error:", err);
+    logError(`[setup] Dev server error: ${err}`);
   });
 
   child.on("close", (code) => {
     if (code !== 0 && code !== null) {
-      console.error(`[setup] Dev server exited with code ${code}`);
+      logError(`[setup] Dev server exited with code ${code}`);
     }
   });
 
