@@ -16,7 +16,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { Env } from "./types.js";
 import { EventReporter } from "./reporter.js";
-import { QueueClient, type QueuedMessage } from "./queue-client.js";
+import { QueueClient, } from "./queue-client.js";
 import { createCustomTools, setMissionCreator, addContributor } from "./tools/index.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { createGitSyncExtension } from "./extension.js";
@@ -65,18 +65,18 @@ export async function runAgent(env: Env): Promise<void> {
   const queueClient = new QueueClient(env);
   const { provider, modelId } = resolveModel(env.MODEL);
 
-  console.log(`[Agent] Starting with model: ${provider}/${modelId}`);
-  console.log(`[Agent] Workspace: ${env.WORKSPACE}`);
+  await reporter.sendSystemMessage(`Starting with model: ${provider}/${modelId}`);
+  await reporter.sendSystemMessage(`Workspace: ${env.WORKSPACE}`);
 
   // Fetch initial messages from queue (includes initial prompt + any follow-ups during setup)
   const initialMessages = await queueClient.fetchPendingMessages();
-  
+
   if (initialMessages.length === 0) {
-    console.log("[Agent] No messages in queue, nothing to do");
+    await reporter.sendSystemMessage("No messages in queue, nothing to do", "warn");
     return;
   }
 
-  console.log(`[Agent] Found ${initialMessages.length} initial message(s) in queue`);
+  await reporter.sendSystemMessage(`Found ${initialMessages.length} initial message(s) in queue`);
 
   // Report start
   await reporter.report({
@@ -93,11 +93,11 @@ export async function runAgent(env: Env): Promise<void> {
       `git config user.name "${env.GIT_AUTHOR_NAME}" && git config user.email "${env.GIT_AUTHOR_EMAIL}"`,
       { cwd: env.WORKSPACE }
     );
-    console.log(`[Agent] Git configured for: ${env.GIT_AUTHOR_NAME} <${env.GIT_AUTHOR_EMAIL}>`);
+    await reporter.sendSystemMessage(`Git configured for: ${env.GIT_AUTHOR_NAME} <${env.GIT_AUTHOR_EMAIL}>`);
 
     // Update origin remote URL with fresh token (handles checkpointed sprites with stale tokens)
     await execAsync(`git remote set-url origin "${repoUrl}"`, { cwd: env.WORKSPACE });
-    console.log(`[Agent] Updated origin remote with fresh credentials`);
+    await reporter.sendSystemMessage("Updated origin remote with fresh credentials");
 
     // Set mission creator from first message sender
     const firstMessage = initialMessages[0];
@@ -269,9 +269,9 @@ export async function runAgent(env: Env): Promise<void> {
     const combinedPrompt = initialMessages
       .map(msg => `[${msg.senderName}]: ${msg.text}`)
       .join("\n\n");
-    
-    console.log(`[Agent] Running combined initial prompt (${initialMessages.length} messages)`);
-    
+
+    await reporter.sendSystemMessage(`Running combined initial prompt (${initialMessages.length} messages)`);
+
     // Mark all initial messages as delivered
     for (const msg of initialMessages) {
       await queueClient.markDelivered(msg.id);
@@ -292,19 +292,19 @@ export async function runAgent(env: Env): Promise<void> {
     let continuePolling = true;
     while (continuePolling) {
       const queuedMessages = await queueClient.fetchPendingMessages();
-      
+
       if (queuedMessages.length === 0) {
-        console.log("[Agent] No more queued messages, finishing");
+        await reporter.sendSystemMessage("No more queued messages, finishing");
         continuePolling = false;
         break;
       }
 
-      console.log(`[Agent] Found ${queuedMessages.length} new queued message(s)`);
+      await reporter.sendSystemMessage(`Found ${queuedMessages.length} new queued message(s)`);
 
       for (const msg of queuedMessages) {
         // Mark as delivered
         await queueClient.markDelivered(msg.id);
-        
+
         // Track contributor for co-author attribution
         addContributor({
           id: msg.senderId,
@@ -314,21 +314,21 @@ export async function runAgent(env: Env): Promise<void> {
 
         // Format message with sender attribution
         const formattedMessage = `[${msg.senderName}]: ${msg.text}`;
-        
-        console.log(`[Agent] Processing queued message (${msg.behavior}): ${msg.text.slice(0, 100)}...`);
+
+        await reporter.sendSystemMessage(`Processing queued message (${msg.behavior}): ${msg.text.slice(0, 100)}...`);
 
         if (msg.behavior === "steer") {
           // Interrupt: use steer() to deliver after current tool completes
           if (session.isStreaming) {
-            console.log("[Agent] Using steer() - agent is streaming");
+            await reporter.sendSystemMessage("Using steer() - agent is streaming");
             await session.steer(formattedMessage);
           } else {
-            console.log("[Agent] Using prompt() - agent is idle");
+            await reporter.sendSystemMessage("Using prompt() - agent is idle");
             await session.prompt(formattedMessage);
           }
         } else {
           // followUp: agent is idle at this point, use regular prompt
-          console.log("[Agent] Using prompt() for followUp message");
+          await reporter.sendSystemMessage("Using prompt() for followUp message");
           await session.prompt(formattedMessage);
         }
 
@@ -337,7 +337,7 @@ export async function runAgent(env: Env): Promise<void> {
 
         // Mark as processed
         await queueClient.markProcessed(msg.id);
-        console.log(`[Agent] Processed message ${msg.id}`);
+        await reporter.sendSystemMessage(`Processed message ${msg.id}`);
       }
     }
 
@@ -349,10 +349,10 @@ export async function runAgent(env: Env): Promise<void> {
     // Clean up
     session.dispose();
 
-    console.log("[Agent] Completed successfully");
+    await reporter.sendSystemMessage("Completed successfully");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("[Agent] Error:", error);
+    await reporter.sendSystemMessage(`Error: ${message}`, "error");
 
     await reporter.report({
       type: "agent:error",

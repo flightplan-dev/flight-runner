@@ -46,6 +46,7 @@ export type AgentEventType =
   | "tool:update"
   | "tool:end"
   | "system:compaction"
+  | "system:message"
   | "pr:created"
   | "pr:status";
 
@@ -117,6 +118,19 @@ export interface SystemCompactionEvent extends BaseEvent {
   summary: string;
 }
 
+/** Debug/system message level for the debug panel */
+export type SystemMessageLevel = "info" | "warn" | "error" | "debug";
+
+export interface SystemMessageEvent extends BaseEvent {
+  type: "system:message";
+  /** Human-readable message */
+  message: string;
+  /** Message level (affects styling in debug panel) */
+  level: SystemMessageLevel;
+  /** Optional log output (for multi-line details) */
+  log?: string;
+}
+
 export interface PrCreatedEvent extends BaseEvent {
   type: "pr:created";
   prNumber: number;
@@ -150,5 +164,6 @@ export type AgentEvent =
   | ToolUpdateEvent
   | ToolEndEvent
   | SystemCompactionEvent
+  | SystemMessageEvent
   | PrStatusEvent
   | PrCreatedEvent;

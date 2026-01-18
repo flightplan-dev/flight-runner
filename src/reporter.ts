@@ -18,6 +18,8 @@ import type {
   ToolUpdateEvent,
   ToolEndEvent,
   SystemCompactionEvent,
+  SystemMessageEvent,
+  SystemMessageLevel,
   PrCreatedEvent,
   PrStatusEvent,
   Env,
@@ -35,6 +37,7 @@ type ReportableEvent =
   | Omit<ToolUpdateEvent, "timestamp" | "missionId">
   | Omit<ToolEndEvent, "timestamp" | "missionId">
   | Omit<SystemCompactionEvent, "timestamp" | "missionId">
+  | Omit<SystemMessageEvent, "timestamp" | "missionId">
   | Omit<PrCreatedEvent, "timestamp" | "missionId">
   | Omit<PrStatusEvent, "timestamp" | "missionId">;
 
@@ -131,5 +134,28 @@ export class EventReporter {
     while (this.eventQueue.length > 0 || this.isFlushing) {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
+  }
+
+  /**
+   * Send a debug/system message to the Gateway's debug panel.
+   *
+   * These messages appear in the expandable debug panel at the bottom
+   * of the mission detail page, separate from the main chat stream.
+   *
+   * @param message - Human-readable message
+   * @param level - Message level: "info" | "warn" | "error" | "debug"
+   * @param log - Optional multi-line log output for details
+   */
+  async sendSystemMessage(
+    message: string,
+    level: SystemMessageLevel = "info",
+    log?: string,
+  ): Promise<void> {
+    await this.report({
+      type: "system:message",
+      message,
+      level,
+      log,
+    });
   }
 }
