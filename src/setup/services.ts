@@ -95,11 +95,12 @@ async function installPostgres(version: string, extensions?: string[]): Promise<
 
   if (os === "debian" || os === "ubuntu") {
     // Debian/Ubuntu - need to add PostgreSQL APT repository for recent versions
-    // Use sudo if not running as root
+    // Use sudo if not running as root, set noninteractive to suppress debconf prompts
     const sudo = process.getuid?.() === 0 ? "" : "sudo ";
+    const aptEnv = "DEBIAN_FRONTEND=noninteractive";
     
-    await runCommand(`${sudo}apt-get update`);
-    await runCommand(`${sudo}apt-get install -y curl ca-certificates gnupg lsb-release`);
+    await runCommand(`${sudo}${aptEnv} apt-get update`);
+    await runCommand(`${sudo}${aptEnv} apt-get install -y curl ca-certificates gnupg lsb-release`);
     
     // Get the codename (e.g., "jammy", "noble", "plucky")
     const codename = (await runCommandCapture("lsb_release -cs")).trim();
@@ -110,19 +111,19 @@ async function installPostgres(version: string, extensions?: string[]): Promise<
     await runCommand(`${sudo}install -d /usr/share/postgresql-common/pgdg`);
     await runCommand(`${sudo}curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc`);
     await runCommand(`${sudo}sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${codename}-pgdg main" > /etc/apt/sources.list.d/pgdg.list'`);
-    await runCommand(`${sudo}apt-get update`);
+    await runCommand(`${sudo}${aptEnv} apt-get update`);
     
     // Install PostgreSQL
-    await runCommand(`${sudo}apt-get install -y postgresql-${majorVersion} postgresql-contrib-${majorVersion}`);
+    await runCommand(`${sudo}${aptEnv} apt-get install -y postgresql-${majorVersion} postgresql-contrib-${majorVersion}`);
     
     // Install extension packages
     if (extensions?.includes("postgis")) {
       console.log("[services] Installing PostGIS extension...");
-      await runCommand(`${sudo}apt-get install -y postgresql-${majorVersion}-postgis-3 postgresql-${majorVersion}-postgis-3-scripts`);
+      await runCommand(`${sudo}${aptEnv} apt-get install -y postgresql-${majorVersion}-postgis-3 postgresql-${majorVersion}-postgis-3-scripts`);
     }
     if (extensions?.includes("pgvector")) {
       console.log("[services] Installing pgvector extension...");
-      await runCommand(`${sudo}apt-get install -y postgresql-${majorVersion}-pgvector`);
+      await runCommand(`${sudo}${aptEnv} apt-get install -y postgresql-${majorVersion}-pgvector`);
     }
   } else if (os === "alpine") {
     // Alpine Linux (common in containers)
@@ -239,10 +240,11 @@ async function startRedis(version: string): Promise<ServiceInstance> {
 async function installRedis(version: string): Promise<void> {
   const os = await detectOS();
   const sudo = process.getuid?.() === 0 ? "" : "sudo ";
+  const aptEnv = "DEBIAN_FRONTEND=noninteractive";
 
   if (os === "debian" || os === "ubuntu") {
-    await runCommand(`${sudo}apt-get update`);
-    await runCommand(`${sudo}apt-get install -y redis-server`);
+    await runCommand(`${sudo}${aptEnv} apt-get update`);
+    await runCommand(`${sudo}${aptEnv} apt-get install -y redis-server`);
   } else if (os === "alpine") {
     await runCommand(`${sudo}apk add --no-cache redis`);
   } else if (os === "macos") {
