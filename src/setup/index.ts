@@ -236,6 +236,12 @@ async function main(): Promise<void> {
 
     if (devServer) {
       await updateStatus("starting dev server");
+
+      // Write PORT to .env so other processes and the LLM can see it
+      await appendEnvVar(resolvedWorkspace, "PORT", String(DEV_SERVER_PORT));
+      process.env.PORT = String(DEV_SERVER_PORT);
+      status.env.PORT = String(DEV_SERVER_PORT);
+
       log(`[setup] Starting dev server: ${devServer.command}`);
       log(`[setup] Using standardized port: ${DEV_SERVER_PORT}`);
       devServerProcess = startDevServer(devServer.command, resolvedWorkspace, DEV_SERVER_PORT);
