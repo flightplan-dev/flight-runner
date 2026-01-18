@@ -278,21 +278,8 @@ export async function runAgent(env: Env): Promise<void> {
       await queueClient.markDelivered(msg.id);
     }
 
-    // Run the combined prompt
-    await session.prompt(combinedPrompt);
-
-    // Wait for agent to finish initial prompt
-    await session.agent.waitForIdle();
-
-    // Mark all initial messages as processed
-    for (const msg of initialMessages) {
-      await queueClient.markProcessed(msg.id);
-    }
-
-
-    // Start file-based abort watcher
-    // Gateway triggers abort by POSTing to sprites.dev exec API:
-    //   POST /api/sprites/exec { "command": "touch /tmp/flightplan-abort" }
+    // Start file-based abort watcher BEFORE running prompts
+    // Gateway triggers abort by running: touch /tmp/flightplan-abort
     const abortWatcher = new AbortWatcher();
     abortWatcher.start(() => {
       // Fire-and-forget async operations
@@ -303,6 +290,16 @@ export async function runAgent(env: Env): Promise<void> {
     });
 
     try {
+      // Run the combined prompt
+      await session.prompt(combinedPrompt);
+
+      // Wait for agent to finish initial prompt
+      await session.agent.waitForIdle();
+
+      // Mark all initial messages as processed
+      for (const msg of initialMessages) {
+        await queueClient.markProcessed(msg.id);
+      }
       const processedMessageIds: string[] = [];
 
       while (!abortWatcher.wasAborted) {
