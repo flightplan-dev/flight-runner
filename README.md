@@ -210,8 +210,10 @@ Projects can include a `flightplan.yml` file to configure infrastructure that th
 ```yaml
 # Services to spin up (we create them, inject connection URLs)
 services:
-  - postgres:16    # → POSTGRES_URL env var
-  - redis:7        # → REDIS_URL env var
+  - postgres:16              # → POSTGRES_URL env var
+  - postgres:16-postgis      # → with PostGIS extension
+  - postgres:16-pgvector     # → with pgvector extension
+  - redis:7                  # → REDIS_URL env var
 
 # Environment configuration
 env:
@@ -264,6 +266,8 @@ If no `flightplan.yml` exists, the LLM figures everything out by reading the cod
 See `examples/` directory:
 - `flightplan-minimal.yml` - Simple project, just setup
 - `flightplan-postgres.yml` - Node.js + PostgreSQL
+- `flightplan-postgis.yml` - PostgreSQL + PostGIS (geospatial)
+- `flightplan-pgvector.yml` - PostgreSQL + pgvector (AI embeddings)
 - `flightplan-python.yml` - Django + Postgres + Redis
 - `flightplan-multitest.yml` - Project with multiple test suites
 

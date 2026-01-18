@@ -18,6 +18,7 @@ export interface ServiceConfig {
   name: string;
   version: string;
   envVar: string;
+  extensions?: string[];  // e.g., ["postgis", "pg_trgm"]
 }
 
 /**
@@ -27,7 +28,7 @@ export async function startService(service: ServiceConfig): Promise<ServiceInsta
   switch (service.name) {
     case "postgres":
     case "postgresql":
-      return startPostgres(service.version);
+      return startPostgres(service.version, service.extensions);
     case "redis":
       return startRedis(service.version);
     default:
@@ -39,7 +40,7 @@ export async function startService(service: ServiceConfig): Promise<ServiceInsta
 // PostgreSQL
 // =============================================================================
 
-async function startPostgres(version: string): Promise<ServiceInstance> {
+async function startPostgres(version: string, extensions?: string[]): Promise<ServiceInstance> {
   // Check if already running
   const existingUrl = process.env.POSTGRES_URL;
   if (existingUrl) {
@@ -56,7 +57,7 @@ async function startPostgres(version: string): Promise<ServiceInstance> {
   if (await isPortOpen(port)) {
     console.log("[services] Postgres already running on port 5432");
     // Ensure our database exists
-    await ensurePostgresDatabase(database, user, password);
+    await ensurePostgresDatabase(database, user, password, extensions);
     const url = `postgres://${user}:${password}@localhost:${port}/${database}`;
     return { name: "postgres", url, port };
   }
@@ -66,7 +67,7 @@ async function startPostgres(version: string): Promise<ServiceInstance> {
 
   if (!isInstalled) {
     console.log(`[services] Installing PostgreSQL ${version}...`);
-    await installPostgres(version);
+    await installPostgres(version, extensions);
   }
 
   // Start Postgres
@@ -76,8 +77,8 @@ async function startPostgres(version: string): Promise<ServiceInstance> {
   // Wait for it to be ready
   await waitForPort(port, 30000);
 
-  // Create database and user
-  await ensurePostgresDatabase(database, user, password);
+  // Create database and user, enable extensions
+  await ensurePostgresDatabase(database, user, password, extensions);
 
   const url = `postgres://${user}:${password}@localhost:${port}/${database}`;
   console.log(`[services] PostgreSQL ready: ${url}`);
@@ -85,7 +86,7 @@ async function startPostgres(version: string): Promise<ServiceInstance> {
   return { name: "postgres", url, port };
 }
 
-async function installPostgres(version: string): Promise<void> {
+async function installPostgres(version: string, extensions?: string[]): Promise<void> {
   // Determine the major version (e.g., "16" from "16.1")
   const majorVersion = version.split(".")[0];
 
@@ -96,12 +97,33 @@ async function installPostgres(version: string): Promise<void> {
     // Debian/Ubuntu
     await runCommand("apt-get update");
     await runCommand(`apt-get install -y postgresql-${majorVersion} postgresql-contrib-${majorVersion}`);
+    
+    // Install extension packages
+    if (extensions?.includes("postgis")) {
+      console.log("[services] Installing PostGIS extension...");
+      await runCommand(`apt-get install -y postgresql-${majorVersion}-postgis-3 postgresql-${majorVersion}-postgis-3-scripts`);
+    }
+    if (extensions?.includes("pgvector")) {
+      console.log("[services] Installing pgvector extension...");
+      await runCommand(`apt-get install -y postgresql-${majorVersion}-pgvector`);
+    }
   } else if (os === "alpine") {
     // Alpine Linux (common in containers)
     await runCommand(`apk add --no-cache postgresql${majorVersion} postgresql${majorVersion}-contrib`);
+    
+    if (extensions?.includes("postgis")) {
+      await runCommand(`apk add --no-cache postgis`);
+    }
   } else if (os === "macos") {
     // macOS (for local development)
     await runCommand(`brew install postgresql@${majorVersion}`);
+    
+    if (extensions?.includes("postgis")) {
+      await runCommand("brew install postgis");
+    }
+    if (extensions?.includes("pgvector")) {
+      await runCommand("brew install pgvector");
+    }
   } else {
     throw new Error(`Unsupported OS for Postgres installation: ${os}`);
   }
@@ -127,10 +149,10 @@ async function startPostgresService(): Promise<void> {
   }
 }
 
-async function ensurePostgresDatabase(database: string, user: string, password: string): Promise<void> {
+async function ensurePostgresDatabase(database: string, user: string, password: string, extensions?: string[]): Promise<void> {
   // Create user if not exists
   await runCommand(
-    `su postgres -c "psql -tc \\"SELECT 1 FROM pg_roles WHERE rolname='${user}'\\" | grep -q 1 || psql -c \\"CREATE USER ${user} WITH PASSWORD '${password}' CREATEDB\\""`,
+    `su postgres -c "psql -tc \\"SELECT 1 FROM pg_roles WHERE rolname='${user}'\\" | grep -q 1 || psql -c \\"CREATE USER ${user} WITH PASSWORD '${password}' CREATEDB SUPERUSER\\""`,
     true // ignore errors
   );
 
@@ -139,6 +161,17 @@ async function ensurePostgresDatabase(database: string, user: string, password: 
     `su postgres -c "psql -tc \\"SELECT 1 FROM pg_database WHERE datname='${database}'\\" | grep -q 1 || psql -c \\"CREATE DATABASE ${database} OWNER ${user}\\""`,
     true
   );
+
+  // Enable extensions in the database
+  if (extensions && extensions.length > 0) {
+    for (const ext of extensions) {
+      console.log(`[services] Enabling extension: ${ext}`);
+      await runCommand(
+        `su postgres -c "psql -d ${database} -c \\"CREATE EXTENSION IF NOT EXISTS ${ext}\\""`,
+        true
+      );
+    }
+  }
 }
 
 // =============================================================================

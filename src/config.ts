@@ -103,6 +103,7 @@ export interface ServiceInfo {
   name: string;
   version: string;
   envVar: string; // Environment variable this service provides (e.g., POSTGRES_URL)
+  extensions?: string[]; // Extensions to enable (e.g., ["postgis", "pgvector"])
 }
 
 /**
@@ -124,11 +125,26 @@ const SERVICE_DEFINITIONS: Record<
 
 /**
  * Parse a service string into structured info.
+ * 
+ * Formats supported:
+ *   - "postgres:16"           → Postgres 16
+ *   - "postgres:16-postgis"   → Postgres 16 with PostGIS
+ *   - "postgres:16-postgis-pgvector" → Postgres 16 with PostGIS and pgvector
  */
 export function parseService(service: string): ServiceInfo {
   const parts = service.split(":");
   const name = parts[0].toLowerCase();
-  const version = parts[1] || null;
+  let versionPart = parts[1] || null;
+
+  // Parse extensions from version string (e.g., "16-postgis-pgvector")
+  let version: string | null = null;
+  let extensions: string[] = [];
+
+  if (versionPart) {
+    const versionParts = versionPart.split("-");
+    version = versionParts[0]; // First part is always version
+    extensions = versionParts.slice(1); // Rest are extensions
+  }
 
   const definition = SERVICE_DEFINITIONS[name];
 
@@ -140,6 +156,7 @@ export function parseService(service: string): ServiceInfo {
     name,
     version: version || definition.defaultVersion,
     envVar: definition.envVar,
+    extensions: extensions.length > 0 ? extensions : undefined,
   };
 }
 
