@@ -289,54 +289,82 @@ export async function runAgent(env: Env): Promise<void> {
     }
 
 
-    const processedMessageIds: string[] = [];
-
-    while (true) {
-      const queuedMessages = await queueClient.fetchPendingMessages();
-
-      if (queuedMessages.length === 0) {
-        await reporter.sendSystemMessage("No more queued messages, finishing", "debug");
-        break;
+    // Start abort polling while agent is active
+    let aborted = false;
+    const abortPollInterval = setInterval(async () => {
+      if (aborted) return;
+      
+      try {
+        const messages = await queueClient.fetchPendingMessages();
+        const abortMsg = messages.find(m => m.behavior === "abort");
+        
+        if (abortMsg) {
+          aborted = true;
+          await reporter.sendSystemMessage("Abort requested, stopping agent...", "warn");
+          await queueClient.markDelivered(abortMsg.id);
+          await session.abort();
+          await queueClient.markProcessed(abortMsg.id);
+          await reporter.sendSystemMessage("Agent aborted");
+        }
+      } catch (err) {
+        // Ignore polling errors
       }
+    }, 1000); // Poll every second
 
-      await reporter.sendSystemMessage(`Found ${queuedMessages.length} new queued message(s)`, "debug");
-
+    try {
       const processedMessageIds: string[] = [];
 
-      for (const msg of queuedMessages) {
-        // Mark as delivered
-        await queueClient.markDelivered(msg.id);
+      while (!aborted) {
+        const queuedMessages = await queueClient.fetchPendingMessages();
+        
+        // Filter out abort messages (handled by the polling loop)
+        const regularMessages = queuedMessages.filter(m => m.behavior !== "abort");
 
-        // Track contributor for co-author attribution
-        addContributor({
-          id: msg.senderId,
-          name: msg.senderName,
-          email: "",
-        });
+        if (regularMessages.length === 0) {
+          await reporter.sendSystemMessage("No more queued messages, finishing", "debug");
+          break;
+        }
 
-        // Format message with sender attribution
-        const formattedMessage = `[${msg.senderName}]: ${msg.text}`;
+        await reporter.sendSystemMessage(`Found ${regularMessages.length} new queued message(s)`, "debug");
 
-        await reporter.sendSystemMessage(`Processing queued message (${msg.behavior}): ${msg.text.slice(0, 100)}...`);
+        for (const msg of regularMessages) {
+          if (aborted) break;
+          
+          // Mark as delivered
+          await queueClient.markDelivered(msg.id);
 
-        await session.prompt(formattedMessage, {
-          streamingBehavior: msg.behavior === "steer" ? "steer" : "followUp",
-        });
+          // Track contributor for co-author attribution
+          addContributor({
+            id: msg.senderId,
+            name: msg.senderName,
+            email: "",
+          });
 
-        await reporter.sendSystemMessage(`Finished processing message ${msg.id}`, "debug");
+          // Format message with sender attribution
+          const formattedMessage = `[${msg.senderName}]: ${msg.text}`;
 
-        processedMessageIds.push(msg.id);
+          await reporter.sendSystemMessage(`Processing queued message (${msg.behavior}): ${msg.text.slice(0, 100)}...`);
+
+          await session.prompt(formattedMessage, {
+            streamingBehavior: msg.behavior === "steer" ? "steer" : "followUp",
+          });
+
+          await reporter.sendSystemMessage(`Finished processing message ${msg.id}`, "debug");
+
+          processedMessageIds.push(msg.id);
+        }
       }
+
+      for (const id of processedMessageIds) {
+        // Mark as processed
+        await queueClient.markProcessed(id);
+        await reporter.sendSystemMessage(`Processed message ${id}`, "debug");
+      }
+
+      await session.agent.waitForIdle();
+    } finally {
+      clearInterval(abortPollInterval);
     }
-
-
-    for (const id of processedMessageIds) {
-      // Mark as processed
-      await queueClient.markProcessed(id);
-      await reporter.sendSystemMessage(`Processed message ${id}`, "debug");
-    }
-
-    await session.agent.waitForIdle();
 
     // Report completion
     await reporter.report({
