@@ -213,7 +213,21 @@ export async function runAgent(env: Env): Promise<void> {
           }
           break;
 
-        case "message_end":
+        case "message_end": {
+          // Check for API errors (e.g., invalid API key, rate limits)
+          const assistantMsg = event.message as {
+            role: string;
+            stopReason?: string;
+            errorMessage?: string;
+          };
+          if (assistantMsg.role === "assistant" && assistantMsg.stopReason === "error" && assistantMsg.errorMessage) {
+            await reporter.sendSystemMessage(`LLM API error: ${assistantMsg.errorMessage}`, "error");
+            await reporter.report({
+              type: "agent:error",
+              error: assistantMsg.errorMessage,
+            });
+          }
+
           // Only report message:end if there's actual text content
           // (skip tool-only responses that have no text)
           if (currentMessageId && currentMessageContent.trim()) {
@@ -226,6 +240,7 @@ export async function runAgent(env: Env): Promise<void> {
           currentMessageId = undefined;
           currentMessageContent = "";
           break;
+        }
 
         case "tool_execution_start":
           // Track tool name for tool_execution_end (which doesn't include it)
