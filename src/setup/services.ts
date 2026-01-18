@@ -95,8 +95,11 @@ async function installPostgres(version: string, extensions?: string[]): Promise<
 
   if (os === "debian" || os === "ubuntu") {
     // Debian/Ubuntu - need to add PostgreSQL APT repository for recent versions
-    await runCommand("apt-get update");
-    await runCommand("apt-get install -y curl ca-certificates gnupg lsb-release");
+    // Use sudo if not running as root
+    const sudo = process.getuid?.() === 0 ? "" : "sudo ";
+    
+    await runCommand(`${sudo}apt-get update`);
+    await runCommand(`${sudo}apt-get install -y curl ca-certificates gnupg lsb-release`);
     
     // Get the codename (e.g., "jammy", "noble", "plucky")
     const codename = (await runCommandCapture("lsb_release -cs")).trim();
@@ -104,22 +107,22 @@ async function installPostgres(version: string, extensions?: string[]): Promise<
     
     // Add PostgreSQL APT repository
     console.log("[services] Adding PostgreSQL APT repository...");
-    await runCommand("install -d /usr/share/postgresql-common/pgdg");
-    await runCommand("curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc");
-    await runCommand(`sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${codename}-pgdg main" > /etc/apt/sources.list.d/pgdg.list'`);
-    await runCommand("apt-get update");
+    await runCommand(`${sudo}install -d /usr/share/postgresql-common/pgdg`);
+    await runCommand(`${sudo}curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc`);
+    await runCommand(`${sudo}sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${codename}-pgdg main" > /etc/apt/sources.list.d/pgdg.list'`);
+    await runCommand(`${sudo}apt-get update`);
     
     // Install PostgreSQL
-    await runCommand(`apt-get install -y postgresql-${majorVersion} postgresql-contrib-${majorVersion}`);
+    await runCommand(`${sudo}apt-get install -y postgresql-${majorVersion} postgresql-contrib-${majorVersion}`);
     
     // Install extension packages
     if (extensions?.includes("postgis")) {
       console.log("[services] Installing PostGIS extension...");
-      await runCommand(`apt-get install -y postgresql-${majorVersion}-postgis-3 postgresql-${majorVersion}-postgis-3-scripts`);
+      await runCommand(`${sudo}apt-get install -y postgresql-${majorVersion}-postgis-3 postgresql-${majorVersion}-postgis-3-scripts`);
     }
     if (extensions?.includes("pgvector")) {
       console.log("[services] Installing pgvector extension...");
-      await runCommand(`apt-get install -y postgresql-${majorVersion}-pgvector`);
+      await runCommand(`${sudo}apt-get install -y postgresql-${majorVersion}-pgvector`);
     }
   } else if (os === "alpine") {
     // Alpine Linux (common in containers)
@@ -145,34 +148,37 @@ async function installPostgres(version: string, extensions?: string[]): Promise<
 
 async function startPostgresService(): Promise<void> {
   const os = await detectOS();
+  const sudo = process.getuid?.() === 0 ? "" : "sudo ";
 
   if (os === "debian" || os === "ubuntu") {
     // Try systemctl first, fall back to pg_ctlcluster
     try {
-      await runCommand("pg_ctlcluster 16 main start || service postgresql start");
+      await runCommand(`${sudo}pg_ctlcluster 16 main start || ${sudo}service postgresql start`);
     } catch {
       // If cluster doesn't exist, create it
-      await runCommand("pg_createcluster 16 main --start");
+      await runCommand(`${sudo}pg_createcluster 16 main --start`);
     }
   } else if (os === "alpine") {
     // Alpine uses rc-service or direct pg_ctl
-    await runCommand("mkdir -p /run/postgresql && chown postgres:postgres /run/postgresql");
-    await runCommand("su postgres -c 'pg_ctl -D /var/lib/postgresql/data start'", true);
+    await runCommand(`${sudo}mkdir -p /run/postgresql && ${sudo}chown postgres:postgres /run/postgresql`);
+    await runCommand(`${sudo}su postgres -c 'pg_ctl -D /var/lib/postgresql/data start'`, true);
   } else if (os === "macos") {
     await runCommand("brew services start postgresql@16");
   }
 }
 
 async function ensurePostgresDatabase(database: string, user: string, password: string, extensions?: string[]): Promise<void> {
+  const sudo = process.getuid?.() === 0 ? "" : "sudo ";
+  
   // Create user if not exists
   await runCommand(
-    `su postgres -c "psql -tc \\"SELECT 1 FROM pg_roles WHERE rolname='${user}'\\" | grep -q 1 || psql -c \\"CREATE USER ${user} WITH PASSWORD '${password}' CREATEDB SUPERUSER\\""`,
+    `${sudo}su postgres -c "psql -tc \\"SELECT 1 FROM pg_roles WHERE rolname='${user}'\\" | grep -q 1 || psql -c \\"CREATE USER ${user} WITH PASSWORD '${password}' CREATEDB SUPERUSER\\""`,
     true // ignore errors
   );
 
   // Create database if not exists
   await runCommand(
-    `su postgres -c "psql -tc \\"SELECT 1 FROM pg_database WHERE datname='${database}'\\" | grep -q 1 || psql -c \\"CREATE DATABASE ${database} OWNER ${user}\\""`,
+    `${sudo}su postgres -c "psql -tc \\"SELECT 1 FROM pg_database WHERE datname='${database}'\\" | grep -q 1 || psql -c \\"CREATE DATABASE ${database} OWNER ${user}\\""`,
     true
   );
 
@@ -181,7 +187,7 @@ async function ensurePostgresDatabase(database: string, user: string, password: 
     for (const ext of extensions) {
       console.log(`[services] Enabling extension: ${ext}`);
       await runCommand(
-        `su postgres -c "psql -d ${database} -c \\"CREATE EXTENSION IF NOT EXISTS ${ext}\\""`,
+        `${sudo}su postgres -c "psql -d ${database} -c \\"CREATE EXTENSION IF NOT EXISTS ${ext}\\""`,
         true
       );
     }
@@ -232,12 +238,13 @@ async function startRedis(version: string): Promise<ServiceInstance> {
 
 async function installRedis(version: string): Promise<void> {
   const os = await detectOS();
+  const sudo = process.getuid?.() === 0 ? "" : "sudo ";
 
   if (os === "debian" || os === "ubuntu") {
-    await runCommand("apt-get update");
-    await runCommand("apt-get install -y redis-server");
+    await runCommand(`${sudo}apt-get update`);
+    await runCommand(`${sudo}apt-get install -y redis-server`);
   } else if (os === "alpine") {
-    await runCommand("apk add --no-cache redis");
+    await runCommand(`${sudo}apk add --no-cache redis`);
   } else if (os === "macos") {
     await runCommand("brew install redis");
   } else {
@@ -247,9 +254,10 @@ async function installRedis(version: string): Promise<void> {
 
 async function startRedisService(): Promise<void> {
   const os = await detectOS();
+  const sudo = process.getuid?.() === 0 ? "" : "sudo ";
 
   if (os === "debian" || os === "ubuntu") {
-    await runCommand("service redis-server start || redis-server --daemonize yes");
+    await runCommand(`${sudo}service redis-server start || redis-server --daemonize yes`);
   } else if (os === "alpine") {
     await runCommand("redis-server --daemonize yes");
   } else if (os === "macos") {
