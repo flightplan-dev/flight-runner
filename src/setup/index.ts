@@ -231,21 +231,25 @@ async function main(): Promise<void> {
     const devServer = getDevServerConfig(config);
     let devServerProcess: ChildProcess | null = null;
 
+    // Always use port 8080 for the dev server (standardized for Sprites)
+    const DEV_SERVER_PORT = 8080;
+
     if (devServer) {
       await updateStatus("starting dev server");
       log(`[setup] Starting dev server: ${devServer.command}`);
-      devServerProcess = startDevServer(devServer.command, resolvedWorkspace);
+      log(`[setup] Using standardized port: ${DEV_SERVER_PORT}`);
+      devServerProcess = startDevServer(devServer.command, resolvedWorkspace, DEV_SERVER_PORT);
 
       status.devServer = {
-        port: devServer.port,
+        port: DEV_SERVER_PORT,
         pid: devServerProcess.pid,
       };
 
       // Step 6: Wait for port
       await updateStatus("waiting for dev server");
-      log(`[setup] Waiting for port ${devServer.port}...`);
-      await waitForPort(devServer.port, devServer.timeout * 1000);
-      log(`[setup] Dev server ready on port ${devServer.port}`);
+      log(`[setup] Waiting for port ${DEV_SERVER_PORT}...`);
+      await waitForPort(DEV_SERVER_PORT, devServer.timeout * 1000);
+      log(`[setup] Dev server ready on port ${DEV_SERVER_PORT}`);
     }
 
     // Mark as ready and write status
@@ -495,11 +499,19 @@ async function runCommand(command: string, cwd: string): Promise<void> {
   });
 }
 
-function startDevServer(command: string, cwd: string): ChildProcess {
+function startDevServer(command: string, cwd: string, port: number): ChildProcess {
+  // Set PORT env var - most frameworks respect this
+  const env = {
+    ...process.env,
+    PORT: String(port),
+  };
+
+  log(`[setup] Dev server env: PORT=${port}`);
+
   const child = spawn("bash", ["-c", command], {
     cwd,
     stdio: "inherit",
-    env: { ...process.env },
+    env,
     detached: true,
   });
 
