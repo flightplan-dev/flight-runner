@@ -26,6 +26,8 @@ export class AbortWatcher {
       return; // Already watching
     }
 
+    console.log("[AbortWatcher] Started watching for abort signal");
+
     this.intervalId = setInterval(() => {
       if (this.aborted) {
         return;

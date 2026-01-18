@@ -294,10 +294,12 @@ export async function runAgent(env: Env): Promise<void> {
     // Gateway triggers abort by POSTing to sprites.dev exec API:
     //   POST /api/sprites/exec { "command": "touch /tmp/flightplan-abort" }
     const abortWatcher = new AbortWatcher();
-    abortWatcher.start(async () => {
-      await reporter.sendSystemMessage("Abort requested, stopping agent...", "warn");
-      await session.abort();
-      await reporter.sendSystemMessage("Agent aborted");
+    abortWatcher.start(() => {
+      // Fire-and-forget async operations
+      reporter.sendSystemMessage("Abort requested, stopping agent...", "warn");
+      session.abort().then(() => {
+        reporter.sendSystemMessage("Agent aborted");
+      });
     });
 
     try {
