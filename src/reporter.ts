@@ -103,6 +103,8 @@ export class EventReporter {
     const body = JSON.stringify(event);
     const signature = signPayload(this.webhookSecret, body);
 
+    console.log(`[EventReporter] Sending ${event.type} to ${url}`);
+
     try {
       const response = await fetch(url, {
         method: "POST",
@@ -119,6 +121,8 @@ export class EventReporter {
           `[EventReporter] Failed to send event: ${response.status} ${response.statusText}`,
           responseBody,
         );
+      } else {
+        console.log(`[EventReporter] Successfully sent ${event.type}`);
       }
     } catch (error) {
       console.error(`[EventReporter] Error sending event:`, error);
