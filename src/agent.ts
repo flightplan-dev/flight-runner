@@ -277,6 +277,7 @@ export async function runAgent(env: Env): Promise<void> {
             toolName,
             output,
             isError: event.isError,
+            details: event.result?.details as Record<string, unknown> | undefined,
           });
           break;
         }

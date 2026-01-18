@@ -111,6 +111,8 @@ export interface ToolEndEvent extends BaseEvent {
   toolName: string;
   output: string;
   isError?: boolean;
+  /** Tool-specific details (e.g., diff for edit tool) */
+  details?: Record<string, unknown>;
 }
 
 export interface SystemCompactionEvent extends BaseEvent {
