@@ -43,8 +43,9 @@ import { startService, type ServiceInstance } from "./services.js";
 // =============================================================================
 
 interface SetupStatus {
-  ready: boolean;
+  status: "running" | "ready" | "failed";
   timestamp: string;
+  step?: string;  // Current step (for progress tracking)
   services: ServiceInstance[];
   devServer?: {
     port: number;
@@ -95,13 +96,23 @@ async function main(): Promise<void> {
 
   // Track status for output
   const status: SetupStatus = {
-    ready: false,
+    status: "running",
     timestamp: new Date().toISOString(),
     services: [],
     env: {},
   };
 
+  // Helper to update status file with current step
+  const updateStatus = async (step: string) => {
+    status.step = step;
+    status.timestamp = new Date().toISOString();
+    await writeStatus(resolvedWorkspace, status).catch(() => {});
+  };
+
   try {
+    // Write initial "running" status so poller knows we've started
+    await updateStatus("initializing");
+
     // Build initial context with any pre-existing service URLs from environment
     const context: InterpolationContext = { services: {}, secrets };
     
@@ -130,6 +141,7 @@ async function main(): Promise<void> {
       console.log(`[setup] Starting ${services.length} service(s)...`);
 
       for (const serviceConfig of services) {
+        await updateStatus(`installing ${serviceConfig.name}`);
         const instance = await startService(serviceConfig);
         status.services.push(instance);
 
@@ -143,6 +155,7 @@ async function main(): Promise<void> {
     status.env = resolvedEnv;
 
     // Step 2: Copy env file if specified
+    await updateStatus("configuring environment");
     const envFromFile = getEnvFromFile(config);
     if (envFromFile) {
       await copyEnvFile(resolvedWorkspace, envFromFile);
@@ -170,7 +183,9 @@ async function main(): Promise<void> {
     const setupCommands = getSetupCommands(config);
     if (setupCommands.length > 0) {
       console.log(`[setup] Running ${setupCommands.length} setup command(s)...`);
-      for (const cmd of setupCommands) {
+      for (let i = 0; i < setupCommands.length; i++) {
+        const cmd = setupCommands[i];
+        await updateStatus(`setup command ${i + 1}/${setupCommands.length}`);
         await runCommand(cmd, resolvedWorkspace);
       }
     }
@@ -180,6 +195,7 @@ async function main(): Promise<void> {
     let devServerProcess: ChildProcess | null = null;
 
     if (devServer) {
+      await updateStatus("starting dev server");
       console.log(`[setup] Starting dev server: ${devServer.command}`);
       devServerProcess = startDevServer(devServer.command, resolvedWorkspace);
 
@@ -189,13 +205,15 @@ async function main(): Promise<void> {
       };
 
       // Step 6: Wait for port
+      await updateStatus("waiting for dev server");
       console.log(`[setup] Waiting for port ${devServer.port}...`);
       await waitForPort(devServer.port, devServer.timeout * 1000);
       console.log(`[setup] Dev server ready on port ${devServer.port}`);
     }
 
     // Mark as ready and write status
-    status.ready = true;
+    status.status = "ready";
+    status.step = undefined;
     await writeStatus(resolvedWorkspace, status);
 
     // Print summary
@@ -230,7 +248,7 @@ async function main(): Promise<void> {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("[setup] ✗ Setup failed:", errorMessage);
 
-    status.ready = false;
+    status.status = "failed";
     status.error = errorMessage;
     await writeStatus(resolvedWorkspace, status).catch(() => {});
 

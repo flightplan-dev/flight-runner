@@ -18,7 +18,8 @@ import { readFile, access } from "fs/promises";
 import { join, resolve } from "path";
 
 interface SetupStatus {
-  ready: boolean;
+  status: "running" | "ready" | "failed";
+  step?: string;
   error?: string;
   services: Array<{ name: string; url: string; port: number }>;
   devServer?: { port: number; pid?: number };
@@ -60,6 +61,7 @@ EXIT CODES:
   console.log(`[wait] Timeout: ${timeout / 1000}s`);
   
   const start = Date.now();
+  let lastStep = "";
   
   while (Date.now() - start < timeout) {
     try {
@@ -70,7 +72,13 @@ EXIT CODES:
       const content = await readFile(statusPath, "utf-8");
       const status: SetupStatus = JSON.parse(content);
       
-      if (status.ready) {
+      // Log progress if step changed
+      if (status.step && status.step !== lastStep) {
+        console.log(`[wait] Step: ${status.step}`);
+        lastStep = status.step;
+      }
+      
+      if (status.status === "ready") {
         console.log(`[wait] ✓ Setup complete`);
         
         // Print useful info
@@ -88,12 +96,12 @@ EXIT CODES:
         process.exit(0);
       }
       
-      if (status.error) {
+      if (status.status === "failed") {
         console.error(`[wait] ✗ Setup failed: ${status.error}`);
         process.exit(1);
       }
       
-      // Status file exists but not ready yet, keep waiting
+      // Status is "running", keep waiting
     } catch (err) {
       // File doesn't exist yet or parse error, keep waiting
     }
