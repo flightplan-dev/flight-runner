@@ -26,7 +26,7 @@
  */
 
 import { spawn, ChildProcess } from "child_process";
-import { copyFile, readFile, writeFile, appendFile, access } from "fs/promises";
+import { copyFile, readFile, writeFile, access } from "fs/promises";
 import { createWriteStream, WriteStream } from "fs";
 import { join, resolve } from "path";
 import {
@@ -237,10 +237,9 @@ async function main(): Promise<void> {
     if (devServer) {
       await updateStatus("starting dev server");
 
-      // Write PORT to .env so other processes and the LLM can see it
-      await appendEnvVar(resolvedWorkspace, "PORT", String(DEV_SERVER_PORT));
-      process.env.PORT = String(DEV_SERVER_PORT);
-      status.env.PORT = String(DEV_SERVER_PORT);
+      // PORT is set by gateway (export PORT=8080), track it in status
+      const port = parseInt(process.env.PORT || String(DEV_SERVER_PORT), 10);
+      status.env.PORT = String(port);
 
       log(`[setup] Starting dev server: ${devServer.command}`);
       log(`[setup] Using standardized port: ${DEV_SERVER_PORT}`);
