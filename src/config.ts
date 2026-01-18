@@ -60,7 +60,7 @@ const EnvConfigSchema = z.object({
  */
 const DevServerSchema = z.object({
   command: z.string(),
-  port: z.number().min(1).max(65535),
+  port: z.number().min(1).max(65535).optional().default(8080),
   // Max seconds to wait for port to open (default 60)
   timeout: z.number().optional().default(60),
 });
