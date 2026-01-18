@@ -20,6 +20,7 @@ import { QueueClient, } from "./queue-client.js";
 import { createCustomTools, setMissionCreator, addContributor } from "./tools/index.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { createGitSyncExtension } from "./extension.js";
+import { AbortWatcher } from "./abort-watcher.js";
 
 const execAsync = promisify(exec);
 
@@ -289,46 +290,31 @@ export async function runAgent(env: Env): Promise<void> {
     }
 
 
-    // Start abort polling while agent is active
-    let aborted = false;
-    const abortPollInterval = setInterval(async () => {
-      if (aborted) return;
-      
-      try {
-        const messages = await queueClient.fetchPendingMessages();
-        const abortMsg = messages.find(m => m.behavior === "abort");
-        
-        if (abortMsg) {
-          aborted = true;
-          await reporter.sendSystemMessage("Abort requested, stopping agent...", "warn");
-          await queueClient.markDelivered(abortMsg.id);
-          await session.abort();
-          await queueClient.markProcessed(abortMsg.id);
-          await reporter.sendSystemMessage("Agent aborted");
-        }
-      } catch (err) {
-        // Ignore polling errors
-      }
-    }, 1000); // Poll every second
+    // Start file-based abort watcher
+    // Gateway triggers abort by POSTing to sprites.dev exec API:
+    //   POST /api/sprites/exec { "command": "touch /tmp/flightplan-abort" }
+    const abortWatcher = new AbortWatcher();
+    abortWatcher.start(async () => {
+      await reporter.sendSystemMessage("Abort requested, stopping agent...", "warn");
+      await session.abort();
+      await reporter.sendSystemMessage("Agent aborted");
+    });
 
     try {
       const processedMessageIds: string[] = [];
 
-      while (!aborted) {
+      while (!abortWatcher.wasAborted) {
         const queuedMessages = await queueClient.fetchPendingMessages();
-        
-        // Filter out abort messages (handled by the polling loop)
-        const regularMessages = queuedMessages.filter(m => m.behavior !== "abort");
 
-        if (regularMessages.length === 0) {
+        if (queuedMessages.length === 0) {
           await reporter.sendSystemMessage("No more queued messages, finishing", "debug");
           break;
         }
 
-        await reporter.sendSystemMessage(`Found ${regularMessages.length} new queued message(s)`, "debug");
+        await reporter.sendSystemMessage(`Found ${queuedMessages.length} new queued message(s)`, "debug");
 
-        for (const msg of regularMessages) {
-          if (aborted) break;
+        for (const msg of queuedMessages) {
+          if (abortWatcher.wasAborted) break;
           
           // Mark as delivered
           await queueClient.markDelivered(msg.id);
@@ -343,7 +329,7 @@ export async function runAgent(env: Env): Promise<void> {
           // Format message with sender attribution
           const formattedMessage = `[${msg.senderName}]: ${msg.text}`;
 
-          await reporter.sendSystemMessage(`Processing queued message (${msg.behavior}): ${msg.text.slice(0, 100)}...`);
+          await reporter.sendSystemMessage(`Processing queued message (${msg.behavior}): ${msg.text.slice(0, 100)}...`, "debug");
 
           await session.prompt(formattedMessage, {
             streamingBehavior: msg.behavior === "steer" ? "steer" : "followUp",
@@ -363,7 +349,7 @@ export async function runAgent(env: Env): Promise<void> {
 
       await session.agent.waitForIdle();
     } finally {
-      clearInterval(abortPollInterval);
+      abortWatcher.stop();
     }
 
     // Report completion
@@ -374,7 +360,7 @@ export async function runAgent(env: Env): Promise<void> {
     // Clean up
     session.dispose();
 
-    await reporter.sendSystemMessage("Completed successfully");
+    await reporter.sendSystemMessage("Completed successfully", "debug");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await reporter.sendSystemMessage(`Error: ${message}`, "error");

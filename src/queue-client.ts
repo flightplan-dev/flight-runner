@@ -15,7 +15,7 @@ import type { Env } from "./types.js";
 export interface QueuedMessage {
   id: string;
   text: string;
-  behavior: "steer" | "followUp" | "abort";
+  behavior: "steer" | "followUp";
   senderId: string;
   senderName: string;
   createdAt: string;
