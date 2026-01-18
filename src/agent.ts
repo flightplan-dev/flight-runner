@@ -290,6 +290,7 @@ export async function runAgent(env: Env): Promise<void> {
 
     // Poll for any new messages that arrived while we were processing
     let continuePolling = true;
+
     while (continuePolling) {
       const queuedMessages = await queueClient.fetchPendingMessages();
 
@@ -300,6 +301,8 @@ export async function runAgent(env: Env): Promise<void> {
       }
 
       await reporter.sendSystemMessage(`Found ${queuedMessages.length} new queued message(s)`);
+
+      const processedMessageIds: string[] = [];
 
       for (const msg of queuedMessages) {
         // Mark as delivered
@@ -332,14 +335,18 @@ export async function runAgent(env: Env): Promise<void> {
           await session.prompt(formattedMessage);
         }
 
-        // Wait for agent to finish processing this message
-        await session.agent.waitForIdle();
-
-        // Mark as processed
-        await queueClient.markProcessed(msg.id);
-        await reporter.sendSystemMessage(`Processed message ${msg.id}`);
+        processedMessageIds.push(msg.id);
       }
     }
+
+
+    for (const msg of initialMessages) {
+      // Mark as processed
+      await queueClient.markProcessed(msg.id);
+      await reporter.sendSystemMessage(`Processed message ${msg.id}`);
+    }
+
+    await session.agent.waitForIdle();
 
     // Report completion
     await reporter.report({

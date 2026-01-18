@@ -52,7 +52,7 @@ export class QueueClient {
    */
   async fetchPendingMessages(): Promise<QueuedMessage[]> {
     const url = `${this.gatewayUrl}/api/missions/${this.missionId}/queue`;
-    
+
     // For GET requests, sign the missionId as the body
     const signature = signPayload(this.webhookSecret, this.missionId);
 
