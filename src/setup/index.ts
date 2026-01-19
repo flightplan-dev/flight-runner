@@ -228,6 +228,10 @@ async function main(): Promise<void> {
       }
     }
 
+    // Configure yarn cache to avoid disk space issues
+    process.env.YARN_CACHE_FOLDER = "/opt/flightplan/.yarn-cache";
+    log(`[setup] Set YARN_CACHE_FOLDER=${process.env.YARN_CACHE_FOLDER}`);
+
     // Step 4: Run setup commands
     const setupCommands = getSetupCommands(config);
     if (setupCommands.length > 0) {
