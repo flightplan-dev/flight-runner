@@ -26,7 +26,7 @@
  */
 
 import { spawn, ChildProcess } from "child_process";
-import { copyFile, readFile, writeFile, access } from "fs/promises";
+import { copyFile, readFile, writeFile, access, mkdir } from "fs/promises";
 import { createWriteStream, WriteStream } from "fs";
 import { join, resolve } from "path";
 import {
@@ -229,7 +229,15 @@ async function main(): Promise<void> {
     }
 
     // Configure yarn cache to avoid disk space issues
-    process.env.YARN_CACHE_FOLDER = "/opt/flightplan/.yarn-cache";
+    // Use /opt/flightplan on Linux (Sprites), fallback to home dir elsewhere
+    const yarnCacheDir = process.platform === "linux" 
+      ? "/opt/flightplan/.yarn-cache"
+      : join(process.env.HOME || "/tmp", ".yarn-cache");
+    
+    // Ensure the directory exists
+    await mkdir(yarnCacheDir, { recursive: true }).catch(() => {});
+    
+    process.env.YARN_CACHE_FOLDER = yarnCacheDir;
     log(`[setup] Set YARN_CACHE_FOLDER=${process.env.YARN_CACHE_FOLDER}`);
 
     // Step 4: Run setup commands
