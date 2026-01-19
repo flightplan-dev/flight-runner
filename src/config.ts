@@ -87,8 +87,8 @@ export const FlightplanConfigSchema = z.object({
   dev_server: DevServerSchema.optional(),
 
   // Optional: point LLM to docs for conventions, test commands, etc.
-  docs: z.string().optional(),
-
+  // Can be a single file path or array of paths
+  docs: z.union([z.string(), z.array(z.string())]).optional(),
   // Optional: inline hints for the LLM (natural language)
   hints: z.array(z.string()).optional(),
 });
@@ -346,10 +346,12 @@ export function getDevServerConfig(
 }
 
 /**
- * Get the docs file path (for LLM to read).
+ * Get the docs file paths (for LLM to read).
+ * Normalizes single string to array.
  */
-export function getDocsPath(config: FlightplanConfig): string | null {
-  return config.docs || null;
+export function getDocsPaths(config: FlightplanConfig): string[] {
+  if (!config.docs) return [];
+  return Array.isArray(config.docs) ? config.docs : [config.docs];
 }
 
 /**
