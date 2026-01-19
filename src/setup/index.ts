@@ -163,7 +163,7 @@ async function main(): Promise<void> {
     await updateStatus("initializing");
 
     // Build initial context with any pre-existing service URLs from environment
-    const context: InterpolationContext = { services: {}, secrets };
+    const context: InterpolationContext = { services: {}, secrets, runtime: {} };
     
     // Check for pre-existing service URLs (e.g., Sprite-provided services)
     if (process.env.POSTGRES_URL) {
@@ -174,6 +174,13 @@ async function main(): Promise<void> {
     }
     if (process.env.DATABASE_URL) {
       context.services.DATABASE_URL = process.env.DATABASE_URL;
+    }
+    
+    // Check for runtime variables (e.g., APP_URL from Sprites)
+    // APP_URL is the sprite's public URL, useful for auth callbacks, webhooks, etc.
+    if (process.env.APP_URL) {
+      context.runtime!.APP_URL = process.env.APP_URL;
+      log(`[setup] APP_URL available for interpolation: ${process.env.APP_URL}`);
     }
     
     // Load config
@@ -361,6 +368,7 @@ ENVIRONMENT:
   KEEP_ALIVE        Set to "true" to keep running (for dev server)
   POSTGRES_URL      If set, uses existing Postgres instead of installing
   REDIS_URL         If set, uses existing Redis instead of installing
+  APP_URL           Sprite's public URL, available as \${APP_URL} in env.set
 
 SERVICES:
   Services are installed directly on the system (no Docker):

@@ -169,11 +169,16 @@ export interface InterpolationContext {
   services: Record<string, string>;
   // Organization secrets from Gateway
   secrets: Record<string, string>;
+  // Runtime variables (e.g., { APP_URL: "https://mission-xxx.sprites.app" })
+  runtime?: Record<string, string>;
 }
 
 /**
  * Interpolate environment variable values.
- * Supports: ${VAR_NAME} for services, ${secrets.KEY} for org secrets
+ * Supports:
+ *   - ${VAR_NAME} for services (e.g., ${POSTGRES_URL})
+ *   - ${secrets.KEY} for org secrets
+ *   - ${APP_URL} for the sprite's public URL (runtime variable)
  */
 export function interpolateEnvValue(
   value: string,
@@ -188,6 +193,11 @@ export function interpolateEnvValue(
       }
       console.warn(`[Config] Secret not found: ${key}`);
       return match;
+    }
+
+    // Handle runtime variables (e.g., APP_URL)
+    if (context.runtime && expr in context.runtime) {
+      return context.runtime[expr];
     }
 
     // Handle service env vars (e.g., POSTGRES_URL)

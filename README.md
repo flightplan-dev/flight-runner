@@ -224,6 +224,7 @@ env:
   set:                              # Static values / interpolations
     NODE_ENV: development
     DATABASE_URL: ${POSTGRES_URL}   # Interpolate from service
+    BETTER_AUTH_URL: ${APP_URL}     # Sprite's public URL (for auth callbacks)
 
 # Setup commands (run BEFORE dev server, order matters)
 setup:
@@ -257,6 +258,33 @@ hints:
 7. Wait for port to be open
 8. Start LLM agent
 
+### Interpolation Variables
+
+Use `${VAR_NAME}` syntax in `env.set` to interpolate values:
+
+| Variable | Source | Description |
+|----------|--------|-------------|
+| `${POSTGRES_URL}` | Service | PostgreSQL connection URL (when `postgres` service is configured) |
+| `${REDIS_URL}` | Service | Redis connection URL (when `redis` service is configured) |
+| `${APP_URL}` | Runtime | Sprite's public URL (e.g., `https://mission-xxx.sprites.app`) |
+| `${secrets.KEY}` | Secrets | Organization secrets from Gateway |
+
+**Example:**
+```yaml
+env:
+  set:
+    DATABASE_URL: ${POSTGRES_URL}        # From postgres service
+    CACHE_URL: ${REDIS_URL}              # From redis service
+    BETTER_AUTH_URL: ${APP_URL}          # Sprite's public URL for OAuth callbacks
+    WEBHOOK_URL: ${APP_URL}/api/webhooks # Derived URL
+    API_KEY: ${secrets.STRIPE_API_KEY}   # From org secrets
+```
+
+The `${APP_URL}` variable is especially useful for:
+- OAuth callback URLs (better-auth, next-auth, auth.js)
+- Webhook endpoints
+- Any URL that needs to be publicly accessible
+
 ### No Config?
 
 If no `flightplan.yml` exists, the LLM figures everything out by reading the codebase (package.json, README, etc.). Services won't be available.
@@ -270,6 +298,7 @@ See `examples/` directory:
 - `flightplan-pgvector.yml` - PostgreSQL + pgvector (AI embeddings)
 - `flightplan-python.yml` - Django + Postgres + Redis
 - `flightplan-multitest.yml` - Project with multiple test suites
+- `flightplan-auth.yml` - App with authentication (uses APP_URL)
 
 ## License
 
