@@ -245,9 +245,11 @@ async function main(): Promise<void> {
     await mkdir(yarnCacheDir, { recursive: true }).catch(() => { });
 
     // Step 4: Run setup commands
-    const setupCommands = getSetupCommands(config);
+    // Use template_setup if IS_TEMPLATE_SETUP=true (first-time setup, no template exists)
+    const isTemplateSetup = process.env.IS_TEMPLATE_SETUP === "true";
+    const setupCommands = getSetupCommands(config, isTemplateSetup);
     if (setupCommands.length > 0) {
-      log(`[setup] Running ${setupCommands.length} setup command(s)...`);
+      log(`[setup] Running ${setupCommands.length} setup command(s)${isTemplateSetup ? " (template setup)" : ""}...`);
       for (let i = 0; i < setupCommands.length; i++) {
         const cmd = setupCommands[i];
         await updateStatus(`setup command ${i + 1}/${setupCommands.length}`);

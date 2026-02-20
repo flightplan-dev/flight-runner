@@ -83,6 +83,10 @@ export const FlightplanConfigSchema = z.object({
   // These are explicit because order matters and some aren't discoverable
   setup: z.array(z.string()).optional(),
 
+  // Template setup commands (first time only, when creating template)
+  // Includes seeds and other one-time setup. Falls back to `setup` if not specified.
+  template_setup: z.array(z.string()).optional(),
+
   // Dev server configuration
   dev_server: DevServerSchema.optional(),
 
@@ -335,8 +339,14 @@ async function fileExists(path: string): Promise<boolean> {
 
 /**
  * Get setup commands from config.
+ * 
+ * @param config - The flightplan config
+ * @param isTemplateSetup - If true, use template_setup commands (for first-time setup with seeds)
  */
-export function getSetupCommands(config: FlightplanConfig): string[] {
+export function getSetupCommands(config: FlightplanConfig, isTemplateSetup = false): string[] {
+  if (isTemplateSetup && config.template_setup) {
+    return config.template_setup;
+  }
   return config.setup || [];
 }
 
