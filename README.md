@@ -116,7 +116,7 @@ node dist/setup/index.js <workspace>
 4. Runs setup commands
 5. Starts dev server (if configured)
 6. Waits for port to be ready
-7. Writes `.flightplan-status.json` with service URLs, etc.
+7. Writes `/opt/flightplan/.flightplan-status.json` with service URLs, etc.
 
 **Environment variables:**
 | Variable | Description |

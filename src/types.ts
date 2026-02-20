@@ -11,7 +11,7 @@ import { z } from "zod";
 export const EnvSchema = z.object({
   GATEWAY_URL: z.string().url(),
   WEBHOOK_SECRET: z.string().min(1), // HMAC secret for signing webhook requests
-  MISSION_ID: z.string().uuid(),
+  TASK_ID: z.string().uuid(),
   // PROMPT is no longer passed via env - fetched from queue instead
   MODEL: z.string().min(1),
   LLM_API_KEY: z.string().min(1),
@@ -54,7 +54,7 @@ export type AgentEventType =
 export interface BaseEvent {
   type: AgentEventType;
   timestamp: string;
-  missionId: string;
+  taskId: string;
 }
 
 export interface AgentStartEvent extends BaseEvent {

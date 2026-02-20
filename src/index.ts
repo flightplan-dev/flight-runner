@@ -2,13 +2,13 @@
 /**
  * flight-runner
  *
- * Agent runner for Flightplan missions.
+ * Agent runner for Flightplan tasks.
  * Runs inside sandboxes and executes coding tasks using pi-mono SDK.
  *
  * Environment variables:
  * - GATEWAY_URL: URL of the Flightplan gateway
  * - GATEWAY_SECRET: Secret for authenticating with the gateway
- * - MISSION_ID: ID of the mission being executed
+ * - TASK_ID: ID of the task being executed
  * - PROMPT: The prompt/task to execute
  * - MODEL: The LLM model to use (e.g., claude-sonnet-4, gpt-4o)
  * - LLM_API_KEY: API key for the LLM provider
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
 
   const env = envResult.data;
 
-  console.log(`[flight-runner] Mission: ${env.MISSION_ID}`);
+  console.log(`[flight-runner] Task: ${env.TASK_ID}`);
   console.log(`[flight-runner] Model: ${env.MODEL}`);
   console.log(`[flight-runner] Workspace: ${env.WORKSPACE}`);
   console.log(`[flight-runner] Gateway: ${env.GATEWAY_URL}`);

@@ -60,7 +60,7 @@ EXIT CODES:
   }
 
   const resolvedWorkspace = resolve(workspace);
-  const statusPath = join(resolvedWorkspace, ".flightplan-status.json");
+  const statusPath = "/opt/flightplan/.flightplan-status.json";
   
   console.log(`[wait] Waiting for setup to complete...`);
   console.log(`[wait] Status file: ${statusPath}`);

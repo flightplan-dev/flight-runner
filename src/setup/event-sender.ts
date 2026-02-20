@@ -11,7 +11,7 @@ import type { SetupStatusType, ServiceInfo } from "../types.js";
 interface SetupEventConfig {
   gatewayUrl: string;
   webhookSecret: string;
-  missionId: string;
+  taskId: string;
 }
 
 interface SetupStatusPayload {
@@ -40,14 +40,14 @@ export class SetupEventSender {
     // Try to read config from environment
     const gatewayUrl = process.env.GATEWAY_URL;
     const webhookSecret = process.env.WEBHOOK_SECRET;
-    const missionId = process.env.MISSION_ID;
+    const taskId = process.env.TASK_ID;
 
-    if (gatewayUrl && webhookSecret && missionId) {
-      this.config = { gatewayUrl, webhookSecret, missionId };
+    if (gatewayUrl && webhookSecret && taskId) {
+      this.config = { gatewayUrl, webhookSecret, taskId };
       console.log(`[SetupEventSender] Configured to send events to ${gatewayUrl}`);
     } else {
       console.log(
-        "[SetupEventSender] Missing GATEWAY_URL, WEBHOOK_SECRET, or MISSION_ID - events will not be sent to Gateway",
+        "[SetupEventSender] Missing GATEWAY_URL, WEBHOOK_SECRET, or TASK_ID - events will not be sent to Gateway",
       );
     }
   }
@@ -71,11 +71,11 @@ export class SetupEventSender {
     const event = {
       type: "setup:status" as const,
       timestamp: new Date().toISOString(),
-      missionId: this.config.missionId,
+      taskId: this.config.taskId,
       ...payload,
     };
 
-    const url = `${this.config.gatewayUrl}/api/missions/${this.config.missionId}/events`;
+    const url = `${this.config.gatewayUrl}/api/tasks/${this.config.taskId}/events`;
     const body = JSON.stringify(event);
     const signature = signPayload(this.config.webhookSecret, body);
 

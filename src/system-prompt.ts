@@ -21,7 +21,7 @@ The environment is being set up **in parallel** while you work. Services (Postgr
 node /opt/flight-runner/dist/setup/wait.js --timeout=120
 \`\`\`
 
-This blocks until setup completes. Once ready, \`.flightplan-status.json\` contains service URLs and configuration.
+This blocks until setup completes. Once ready, \`/opt/flightplan/.flightplan-status.json\` contains service URLs and configuration.
 
 **You can start immediately** - read code, understand the codebase, plan your approach. Only run \`flightplan-wait\` when you actually need to execute tests or access services.
 

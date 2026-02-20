@@ -28,13 +28,13 @@ export interface Contributor {
 const contributorsSinceLastCommit = new Map<string, Contributor>();
 
 // Mission creator (set once at startup, excluded from co-authors)
-let missionCreator: Contributor | null = null;
+let taskCreator: Contributor | null = null;
 
 /**
  * Set the mission creator (primary author for all commits)
  */
-export function setMissionCreator(creator: Contributor): void {
-  missionCreator = creator;
+export function setTaskCreator(creator: Contributor): void {
+  taskCreator = creator;
 }
 
 /**
@@ -42,7 +42,7 @@ export function setMissionCreator(creator: Contributor): void {
  * Mission creator is excluded (they're the primary author).
  */
 export function addContributor(contributor: Contributor): void {
-  if (missionCreator && contributor.id === missionCreator.id) {
+  if (taskCreator && contributor.id === taskCreator.id) {
     return; // Don't add mission creator as co-author
   }
   contributorsSinceLastCommit.set(contributor.id, contributor);

@@ -9,7 +9,7 @@ import { createPrTool, type CreatePrToolOptions } from "./pr.js";
 import { createPrStatusTool, type CreatePrStatusToolOptions } from "./pr-status.js";
 import { createGetCiLogsTool, type GetCiLogsToolOptions } from "./ci-logs.js";
 
-export { setMissionCreator, addContributor } from "./pr.js";
+export { setTaskCreator, addContributor } from "./pr.js";
 export type { Contributor } from "./pr.js";
 
 export interface CreateCustomToolsOptions extends CreatePrToolOptions, CreatePrStatusToolOptions, GetCiLogsToolOptions {}

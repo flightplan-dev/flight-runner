@@ -39,22 +39,22 @@ function signPayload(secret: string, payload: string): string {
 export class QueueClient {
   private gatewayUrl: string;
   private webhookSecret: string;
-  private missionId: string;
+  private taskId: string;
 
   constructor(env: Env) {
     this.gatewayUrl = env.GATEWAY_URL;
     this.webhookSecret = env.WEBHOOK_SECRET;
-    this.missionId = env.MISSION_ID;
+    this.taskId = env.TASK_ID;
   }
 
   /**
    * Fetch pending messages from the queue
    */
   async fetchPendingMessages(): Promise<QueuedMessage[]> {
-    const url = `${this.gatewayUrl}/api/missions/${this.missionId}/queue`;
+    const url = `${this.gatewayUrl}/api/tasks/${this.taskId}/queue`;
 
-    // For GET requests, sign the missionId as the body
-    const signature = signPayload(this.webhookSecret, this.missionId);
+    // For GET requests, sign the taskId as the body
+    const signature = signPayload(this.webhookSecret, this.taskId);
 
     try {
       const response = await fetch(url, {
@@ -103,7 +103,7 @@ export class QueueClient {
     messageId: string,
     status: "delivered" | "processed"
   ): Promise<boolean> {
-    const url = `${this.gatewayUrl}/api/missions/${this.missionId}/queue/${messageId}`;
+    const url = `${this.gatewayUrl}/api/tasks/${this.taskId}/queue/${messageId}`;
     const body = JSON.stringify({ status });
     const signature = signPayload(this.webhookSecret, body);
 

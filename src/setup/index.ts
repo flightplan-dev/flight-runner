@@ -22,7 +22,7 @@
  *   KEEP_ALIVE     If "true", keeps running to maintain dev server
  *
  * Output:
- *   Writes .flightplan-status.json to workspace on success
+ *   Writes /opt/flightplan/.flightplan-status.json on success
  */
 
 import { spawn, ChildProcess } from "child_process";
@@ -147,15 +147,15 @@ async function main(): Promise<void> {
   const updateStatus = async (step: string) => {
     status.step = step;
     status.timestamp = new Date().toISOString();
-    await writeStatus(resolvedWorkspace, status).catch(() => {});
-    
+    await writeStatus(resolvedWorkspace, status).catch(() => { });
+
     // Send event to Gateway (non-blocking)
     eventSender.sendStatus({
       status: status.status as "running",
       step,
       services: status.services.map(s => ({ name: s.name, url: s.url, port: s.port })),
       devServer: status.devServer,
-    }).catch(() => {}); // Don't fail setup if event sending fails
+    }).catch(() => { }); // Don't fail setup if event sending fails
   };
 
   try {
@@ -164,7 +164,7 @@ async function main(): Promise<void> {
 
     // Build initial context with any pre-existing service URLs from environment
     const context: InterpolationContext = { services: {}, secrets, runtime: {} };
-    
+
     // Check for pre-existing service URLs (e.g., Sprite-provided services)
     if (process.env.POSTGRES_URL) {
       context.services.POSTGRES_URL = process.env.POSTGRES_URL;
@@ -175,14 +175,14 @@ async function main(): Promise<void> {
     if (process.env.DATABASE_URL) {
       context.services.DATABASE_URL = process.env.DATABASE_URL;
     }
-    
+
     // Check for runtime variables (e.g., APP_URL from Sprites)
     // APP_URL is the sprite's public URL, useful for auth callbacks, webhooks, etc.
     if (process.env.APP_URL) {
       context.runtime!.APP_URL = process.env.APP_URL;
       log(`[setup] APP_URL available for interpolation: ${process.env.APP_URL}`);
     }
-    
+
     // Load config
     const { config, source, services } = await loadConfig(resolvedWorkspace, context);
 
@@ -237,15 +237,12 @@ async function main(): Promise<void> {
 
     // Configure yarn cache to avoid disk space issues
     // Use /opt/flightplan on Linux (Sprites), fallback to home dir elsewhere
-    const yarnCacheDir = process.platform === "linux" 
+    const yarnCacheDir = process.platform === "linux"
       ? "/opt/flightplan/.yarn-cache"
       : join(process.env.HOME || "/tmp", ".yarn-cache");
-    
+
     // Ensure the directory exists
-    await mkdir(yarnCacheDir, { recursive: true }).catch(() => {});
-    
-    process.env.YARN_CACHE_FOLDER = yarnCacheDir;
-    log(`[setup] Set YARN_CACHE_FOLDER=${process.env.YARN_CACHE_FOLDER}`);
+    await mkdir(yarnCacheDir, { recursive: true }).catch(() => { });
 
     // Step 4: Run setup commands
     const setupCommands = getSetupCommands(config);
@@ -326,7 +323,7 @@ async function main(): Promise<void> {
         process.exit(0);
       });
 
-      await new Promise(() => {}); // Never resolves
+      await new Promise(() => { }); // Never resolves
     }
 
     process.exit(0);
@@ -336,7 +333,7 @@ async function main(): Promise<void> {
 
     status.status = "failed";
     status.error = errorMessage;
-    await writeStatus(resolvedWorkspace, status).catch(() => {});
+    await writeStatus(resolvedWorkspace, status).catch(() => { });
 
     // Send "failed" event to Gateway
     await eventSender.sendStatus({
@@ -344,7 +341,7 @@ async function main(): Promise<void> {
       step: status.step,
       error: errorMessage,
       services: status.services.map(s => ({ name: s.name, url: s.url, port: s.port })),
-    }).catch(() => {});
+    }).catch(() => { });
 
     process.exit(1);
   }
@@ -389,7 +386,7 @@ EXAMPLES:
   POSTGRES_URL='postgres://user:pass@localhost/mydb' flightplan-setup ./myapp
 
 OUTPUT:
-  On success, writes .flightplan-status.json to the workspace with:
+  On success, writes /opt/flightplan/.flightplan-status.json with:
   - Service URLs (POSTGRES_URL, etc.)
   - Dev server port and PID
   - Resolved environment variables
@@ -435,8 +432,10 @@ function printSummary(status: SetupStatus): void {
 // Status File
 // =============================================================================
 
-async function writeStatus(workspace: string, status: SetupStatus): Promise<void> {
-  const statusPath = join(workspace, ".flightplan-status.json");
+async function writeStatus(_workspace: string, status: SetupStatus): Promise<void> {
+  const statusPath = "/opt/flightplan/.flightplan-status.json";
+  // Ensure directory exists
+  await mkdir("/opt/flightplan", { recursive: true }).catch(() => { });
   await writeFile(statusPath, JSON.stringify(status, null, 2));
 }
 

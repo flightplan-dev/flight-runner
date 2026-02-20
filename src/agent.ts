@@ -17,7 +17,7 @@ import {
 import type { Env } from "./types.js";
 import { EventReporter } from "./reporter.js";
 import { QueueClient, } from "./queue-client.js";
-import { createCustomTools, setMissionCreator, addContributor } from "./tools/index.js";
+import { createCustomTools, setTaskCreator, addContributor } from "./tools/index.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { createGitSyncExtension } from "./extension.js";
 import { AbortWatcher } from "./abort-watcher.js";
@@ -89,7 +89,7 @@ export async function runAgent(env: Env): Promise<void> {
     // Build repo URL for git operations (with fresh token)
     const repoUrl = `https://${env.GITHUB_USERNAME}:${env.GITHUB_TOKEN}@github.com/${env.REPO_OWNER}/${env.REPO_NAME}.git`;
 
-    // Configure git attribution (mission creator is primary author)
+    // Configure git attribution (task creator is primary author)
     await execAsync(
       `git config user.name "${env.GIT_AUTHOR_NAME}" && git config user.email "${env.GIT_AUTHOR_EMAIL}"`,
       { cwd: env.WORKSPACE }
@@ -100,9 +100,9 @@ export async function runAgent(env: Env): Promise<void> {
     await execAsync(`git remote set-url origin "${repoUrl}"`, { cwd: env.WORKSPACE });
     await reporter.sendSystemMessage("Updated origin remote with fresh credentials", "debug");
 
-    // Set mission creator from first message sender
+    // Set task creator from first message sender
     const firstMessage = initialMessages[0];
-    setMissionCreator({
+    setTaskCreator({
       id: firstMessage.senderId,
       name: firstMessage.senderName,
       email: "", // Email not available from queue
@@ -127,8 +127,8 @@ export async function runAgent(env: Env): Promise<void> {
       throw new Error(`Model not found: ${provider}/${modelId}`);
     }
 
-    // Session directory for this mission (outside workspace to avoid committing)
-    const sessionDir = `/opt/flightplan/sessions/${env.MISSION_ID}`;
+    // Session directory for this task (outside workspace to avoid committing)
+    const sessionDir = `/opt/flightplan/sessions/${env.TASK_ID}`;
 
     // Use continueRecent to resume existing session, or create new one if none exists
     // The session file will be saved to the workspace and checkpointed with the Sprite

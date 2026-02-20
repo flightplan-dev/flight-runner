@@ -26,22 +26,22 @@ import type {
   Env,
 } from "./types.js";
 
-// Union of all event data types (without timestamp and missionId)
+// Union of all event data types (without timestamp and taskId)
 type ReportableEvent =
-  | Omit<AgentStartEvent, "timestamp" | "missionId">
-  | Omit<AgentEndEvent, "timestamp" | "missionId">
-  | Omit<AgentErrorEvent, "timestamp" | "missionId">
-  | Omit<MessageStartEvent, "timestamp" | "missionId">
-  | Omit<MessageDeltaEvent, "timestamp" | "missionId">
-  | Omit<MessageEndEvent, "timestamp" | "missionId">
-  | Omit<ToolStartEvent, "timestamp" | "missionId">
-  | Omit<ToolUpdateEvent, "timestamp" | "missionId">
-  | Omit<ToolEndEvent, "timestamp" | "missionId">
-  | Omit<SystemCompactionEvent, "timestamp" | "missionId">
-  | Omit<SystemMessageEvent, "timestamp" | "missionId">
-  | Omit<PrCreatedEvent, "timestamp" | "missionId">
-  | Omit<PrStatusEvent, "timestamp" | "missionId">
-  | Omit<SetupStatusEvent, "timestamp" | "missionId">;
+  | Omit<AgentStartEvent, "timestamp" | "taskId">
+  | Omit<AgentEndEvent, "timestamp" | "taskId">
+  | Omit<AgentErrorEvent, "timestamp" | "taskId">
+  | Omit<MessageStartEvent, "timestamp" | "taskId">
+  | Omit<MessageDeltaEvent, "timestamp" | "taskId">
+  | Omit<MessageEndEvent, "timestamp" | "taskId">
+  | Omit<ToolStartEvent, "timestamp" | "taskId">
+  | Omit<ToolUpdateEvent, "timestamp" | "taskId">
+  | Omit<ToolEndEvent, "timestamp" | "taskId">
+  | Omit<SystemCompactionEvent, "timestamp" | "taskId">
+  | Omit<SystemMessageEvent, "timestamp" | "taskId">
+  | Omit<PrCreatedEvent, "timestamp" | "taskId">
+  | Omit<PrStatusEvent, "timestamp" | "taskId">
+  | Omit<SetupStatusEvent, "timestamp" | "taskId">;
 
 /**
  * Sign a payload with HMAC-SHA256
@@ -53,14 +53,14 @@ function signPayload(secret: string, payload: string): string {
 export class EventReporter {
   private gatewayUrl: string;
   private webhookSecret: string;
-  private missionId: string;
+  private taskId: string;
   private eventQueue: AgentEvent[] = [];
   private isFlushing = false;
 
   constructor(env: Env) {
     this.gatewayUrl = env.GATEWAY_URL;
     this.webhookSecret = env.WEBHOOK_SECRET;
-    this.missionId = env.MISSION_ID;
+    this.taskId = env.TASK_ID;
   }
 
   /**
@@ -70,7 +70,7 @@ export class EventReporter {
     const fullEvent = {
       ...event,
       timestamp: new Date().toISOString(),
-      missionId: this.missionId,
+      taskId: this.taskId,
     } as AgentEvent;
 
     this.eventQueue.push(fullEvent);
@@ -101,7 +101,7 @@ export class EventReporter {
    * Send a single event to the Gateway
    */
   private async sendEvent(event: AgentEvent): Promise<void> {
-    const url = `${this.gatewayUrl}/api/missions/${this.missionId}/events`;
+    const url = `${this.gatewayUrl}/api/tasks/${this.taskId}/events`;
     const body = JSON.stringify(event);
     const signature = signPayload(this.webhookSecret, body);
 
@@ -146,7 +146,7 @@ export class EventReporter {
    * Send a debug/system message to the Gateway's debug panel.
    *
    * These messages appear in the expandable debug panel at the bottom
-   * of the mission detail page, separate from the main chat stream.
+   * of the task detail page, separate from the main chat stream.
    *
    * @param message - Human-readable message
    * @param level - Message level: "info" | "warn" | "error" | "debug"
